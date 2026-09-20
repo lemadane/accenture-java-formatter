@@ -66,6 +66,36 @@ describe('Accenture Java Formatter Test Suite', () => {
         assert.ok(formatted.includes('    } else {'));
     });
 
+    it('JavaFormatter should properly indent Java record components and multiline fields', () => {
+        const recordCode = [
+            'package cassandra.course.dtos;',
+            '',
+            'import java.math.BigDecimal;',
+            '',
+            'public record UpdateProductRequest(',
+            'String name,',
+            'String description,',
+            'String category,',
+            'BigDecimal price,',
+            'long version) {',
+            '',
+            '  public long nextVersion() {',
+            '    return version + 1;',
+            '  }',
+            '}'
+        ].join('\n');
+
+        const formatter = new JavaFormatter(ACCENTURE_DEFAULT_CONFIG);
+        const formatted = formatter.formatDocument(recordCode);
+
+        assert.ok(formatted.includes('  String name,'));
+        assert.ok(formatted.includes('  String description,'));
+        assert.ok(formatted.includes('  String category,'));
+        assert.ok(formatted.includes('  BigDecimal price,'));
+        assert.ok(formatted.includes('  long version) {'));
+        assert.ok(formatted.includes('    return version + 1;'));
+    });
+
     it('generateAccentureXmlConfig should output valid Eclipse profile XML', () => {
         const xml = generateAccentureXmlConfig();
         assert.ok(xml.includes('<profiles version="12">'));

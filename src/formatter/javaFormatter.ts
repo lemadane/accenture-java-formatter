@@ -107,9 +107,9 @@ export class JavaFormatter {
                 continue;
             }
 
-            // Adjust indent level for closing braces at line start
-            const startsWithClosingBrace = line.startsWith('}') || line.startsWith(')') || line.startsWith('];');
-            if (startsWithClosingBrace) {
+            // Adjust indent level for closing braces, parens, or brackets at line start
+            const startsWithClosingSymbol = /^\s*[\}\)\]]/.test(line);
+            if (startsWithClosingSymbol) {
                 currentIndent = Math.max(0, currentIndent - 1);
             }
 
@@ -151,15 +151,16 @@ export class JavaFormatter {
                 outputLines.push(fullLine);
             }
 
-            // Adjust indent level for opening braces at line end (if not balanced on same line)
-            const openBraces = (line.match(/\{/g) || []).length;
-            const closeBraces = (line.match(/\}/g) || []).length;
-            const netBraces = openBraces - closeBraces;
+            // Strip string literals to safely count structure tokens
+            const codeWithoutStrings = line.replace(/"([^"\\]|\\.)*"/g, '""').replace(/'([^'\\]|\\.)*'/g, "''");
+            const openTokens = (codeWithoutStrings.match(/[\{\(\[]/g) || []).length;
+            const closeTokens = (codeWithoutStrings.match(/[\}\)\]]/g) || []).length;
+            const netTokens = openTokens - closeTokens;
 
-            if (!startsWithClosingBrace) {
-                currentIndent += netBraces;
-            } else if (netBraces > -1) {
-                currentIndent += (netBraces + 1);
+            if (!startsWithClosingSymbol) {
+                currentIndent += netTokens;
+            } else if (netTokens > -1) {
+                currentIndent += (netTokens + 1);
             }
             currentIndent = Math.max(0, currentIndent);
         }
