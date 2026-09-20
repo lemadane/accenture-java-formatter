@@ -56,6 +56,11 @@
         "command": "accentureJava.format.exportConfig",
         "title": "Accenture Java Formatter: Export Default Accenture Formatter XML Config",
         "category": "Java Formatter"
+      },
+      {
+        "command": "accentureJava.format.setAsDefault",
+        "title": "Accenture Java Formatter: Set as Default Java Formatter",
+        "category": "Java Formatter"
       }
     ],
     "configuration": {

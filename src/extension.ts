@@ -159,6 +159,14 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
+    context.subscriptions.push(
+        vscode.commands.registerCommand('accentureJava.format.setAsDefault', async () => {
+            const javaConfig = vscode.workspace.getConfiguration('[java]');
+            await javaConfig.update('editor.defaultFormatter', 'accenture.accenture-java-formatter', vscode.ConfigurationTarget.Global);
+            vscode.window.showInformationMessage('Accenture Java Formatter is now set as the default Java formatter in VS Code.');
+        })
+    );
+
     // 6. Format on Save Handler
     context.subscriptions.push(
         vscode.workspace.onWillSaveTextDocument(event => {

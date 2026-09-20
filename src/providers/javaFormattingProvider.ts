@@ -10,10 +10,9 @@ export class JavaFormattingEditProvider implements vscode.DocumentFormattingEdit
         token: vscode.CancellationToken
     ): vscode.ProviderResult<vscode.TextEdit[]> {
         const config = getFormatterConfig(document);
-        if (!config.insertSpaces) {
-            config.insertSpaces = options.insertSpaces;
-        }
-        if (options.tabSize) {
+        // Only use options as fallback if tabSize is not specified
+        const userTabSizeSetting = vscode.workspace.getConfiguration('accentureJava.format', document.uri).get<number>('tabSize');
+        if (userTabSizeSetting === undefined && options.tabSize) {
             config.tabSize = options.tabSize;
         }
 
@@ -40,8 +39,10 @@ export class JavaFormattingEditProvider implements vscode.DocumentFormattingEdit
         token: vscode.CancellationToken
     ): vscode.ProviderResult<vscode.TextEdit[]> {
         const config = getFormatterConfig(document);
-        config.insertSpaces = options.insertSpaces;
-        config.tabSize = options.tabSize;
+        const userTabSizeSetting = vscode.workspace.getConfiguration('accentureJava.format', document.uri).get<number>('tabSize');
+        if (userTabSizeSetting === undefined && options.tabSize) {
+            config.tabSize = options.tabSize;
+        }
 
         const formatter = new JavaFormatter(config);
         const originalText = document.getText();
