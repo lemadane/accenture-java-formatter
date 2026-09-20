@@ -1,0 +1,146 @@
+{
+  "name": "accenture-java-formatter",
+  "displayName": "Accenture Java Formatter",
+  "description": "Enterprise-grade Java code formatting extension for Visual Studio Code, inspired by Language Support for Java(TM) by Red Hat.",
+  "version": "1.0.0",
+  "publisher": "accenture",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/accenture/vscode-java-formatter.git"
+  },
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Formatters",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "java",
+    "formatter",
+    "accenture",
+    "code style",
+    "redhat",
+    "formatting",
+    "eclipse",
+    "google-java-format"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:java"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "accentureJava.format.document",
+        "title": "Accenture Java Formatter: Format Document",
+        "category": "Java Formatter"
+      },
+      {
+        "command": "accentureJava.format.selection",
+        "title": "Accenture Java Formatter: Format Selection",
+        "category": "Java Formatter"
+      },
+      {
+        "command": "accentureJava.format.organizeImports",
+        "title": "Accenture Java Formatter: Organize Imports",
+        "category": "Java Formatter"
+      },
+      {
+        "command": "accentureJava.format.selectProfile",
+        "title": "Accenture Java Formatter: Select Formatting Profile",
+        "category": "Java Formatter"
+      },
+      {
+        "command": "accentureJava.format.exportConfig",
+        "title": "Accenture Java Formatter: Export Default Accenture Formatter XML Config",
+        "category": "Java Formatter"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Accenture Java Formatter",
+      "properties": {
+        "accentureJava.format.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable Accenture Java Formatter for Java files."
+        },
+        "accentureJava.format.preset": {
+          "type": "string",
+          "enum": [
+            "Accenture Standard",
+            "Google Java Style",
+            "Eclipse Default",
+            "Spring Framework Style"
+          ],
+          "default": "Accenture Standard",
+          "description": "Pre-configured Java formatting style profile."
+        },
+        "accentureJava.format.settings.url": {
+          "type": "string",
+          "default": "",
+          "description": "Path or URL to custom Eclipse JDT Java Formatter XML settings file."
+        },
+        "accentureJava.format.settings.profile": {
+          "type": "string",
+          "default": "",
+          "description": "Specific profile name to use from the Eclipse JDT XML settings file."
+        },
+        "accentureJava.format.tabSize": {
+          "type": "integer",
+          "default": 2,
+          "description": "Number of spaces per indentation level."
+        },
+        "accentureJava.format.insertSpaces": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use spaces instead of tabs for indentation."
+        },
+        "accentureJava.format.maxLineLength": {
+          "type": "integer",
+          "default": 120,
+          "description": "Maximum character length per line before wrapping."
+        },
+        "accentureJava.format.comments.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Format line, block, and Javadoc comments."
+        },
+        "accentureJava.format.imports.organizeOnFormat": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically sort and clean up Java import statements when formatting."
+        },
+        "accentureJava.format.onSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically format Java document on save."
+        },
+        "accentureJava.format.formatOnChange": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically trigger Accenture Java Formatter when Java code changes in the editor."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "pretest": "npm run compile",
+    "test": "node ./out/test/runTest.js",
+    "package": "npx vsce package"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^18.19.130",
+    "@types/vscode": "~1.75.0",
+    "glob": "^13.0.6",
+    "isomorphic-git": "^1.42.2",
+    "mocha": "^11.8.0",
+    "typescript": "^5.9.3"
+  }
+}
