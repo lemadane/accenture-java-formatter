@@ -50,12 +50,21 @@ class MockEditor {
 let activeDoc: MockDocument | undefined;
 let activeEditor: MockEditor | undefined;
 
+const configStore = new Map<string, any>();
+
 Module.prototype.require = function (request: string) {
     if (request === 'vscode') {
         return {
             workspace: {
-                getConfiguration: () => ({
-                    get: (_key: string, defaultValue: any) => defaultValue
+                getConfiguration: (section?: string) => ({
+                    get: (key: string, defaultValue: any) => {
+                        const fullKey = section ? `${section}.${key}` : key;
+                        return configStore.has(fullKey) ? configStore.get(fullKey) : defaultValue;
+                    },
+                    update: async (key: string, value: any) => {
+                        const fullKey = section ? `${section}.${key}` : key;
+                        configStore.set(fullKey, value);
+                    }
                 }),
                 getWorkspaceFolder: () => undefined,
                 openTextDocument: async (options?: any) => {
@@ -91,10 +100,16 @@ Module.prototype.require = function (request: string) {
             },
             commands: {
                 executeCommand: async (cmd: string) => {
-                    if (!activeEditor) return;
                     const { JavaFormatter } = require('../formatter/javaFormatter');
                     const { ACCENTURE_DEFAULT_CONFIG } = require('../formatter/config');
                     const { organizeJavaImports } = require('../formatter/organizeImports');
+
+                    if (cmd === 'accentureJava.format.setAsDefault') {
+                        configStore.set('[java].editor.defaultFormatter', 'accenture.accenture-java-formatter');
+                        return;
+                    }
+
+                    if (!activeEditor) return;
 
                     if (cmd === 'accentureJava.format.document') {
                         const formatter = new JavaFormatter(ACCENTURE_DEFAULT_CONFIG);

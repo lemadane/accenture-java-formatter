@@ -136,4 +136,42 @@ describe('Accenture Java Formatter E2E Test Suite', () => {
         assert.ok(changedText.includes('  public void execute() {'));
     });
 
+    it('E2E: Should properly format Java record header components with 2-space indentation (UpdateProductRequest)', async () => {
+        const recordCode = [
+            'package cassandra.course.dtos;',
+            'import java.math.BigDecimal;',
+            'public record UpdateProductRequest(',
+            'String name,',
+            'String description,',
+            'String category,',
+            'BigDecimal price,',
+            'long version) {',
+            'public long nextVersion() {',
+            'return version + 1;',
+            '}',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, recordCode);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+
+        const formattedRecordText = testDoc.getText();
+        assert.ok(formattedRecordText.includes('  String name,'));
+        assert.ok(formattedRecordText.includes('  String description,'));
+        assert.ok(formattedRecordText.includes('  String category,'));
+        assert.ok(formattedRecordText.includes('  BigDecimal price,'));
+        assert.ok(formattedRecordText.includes('  long version) {'));
+        assert.ok(formattedRecordText.includes('    return version + 1;'));
+    });
+
+    it('E2E: Should execute accentureJava.format.setAsDefault command', async () => {
+        await vscode.commands.executeCommand('accentureJava.format.setAsDefault');
+        const javaConfig = vscode.workspace.getConfiguration('[java]');
+        assert.strictEqual(javaConfig.get('editor.defaultFormatter'), 'accenture.accenture-java-formatter');
+    });
+
 });
