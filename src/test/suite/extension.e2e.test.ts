@@ -147,7 +147,7 @@ describe('Accenture Java Formatter E2E Test Suite', () => {
             'BigDecimal price,',
             'long version) {',
             'public long nextVersion() {',
-            'return version + 1;',
+            'return version + 2;',
             '}',
             '}'
         ].join('\n');
@@ -166,7 +166,7 @@ describe('Accenture Java Formatter E2E Test Suite', () => {
         assert.ok(formattedRecordText.includes('    BigDecimal price,'));
         assert.ok(formattedRecordText.includes('    long version) {'));
         assert.ok(formattedRecordText.includes('  public long nextVersion() {'));
-        assert.ok(formattedRecordText.includes('    return version + 1;'));
+        assert.ok(formattedRecordText.includes('    return version + 2;'));
     });
 
     it('E2E: Should execute accentureJava.format.setAsDefault command', async () => {

@@ -80,7 +80,7 @@ describe('Accenture Java Formatter Test Suite', () => {
             'long version) {',
             '',
             '  public long nextVersion() {',
-            '    return version + 1;',
+            '    return version + 2;',
             '  }',
             '}'
         ].join('\n');
@@ -94,7 +94,7 @@ describe('Accenture Java Formatter Test Suite', () => {
         assert.ok(formatted.includes('    BigDecimal price,'));
         assert.ok(formatted.includes('    long version) {'));
         assert.ok(formatted.includes('  public long nextVersion() {'));
-        assert.ok(formatted.includes('    return version + 1;'));
+        assert.ok(formatted.includes('    return version + 2;'));
     });
 
     it('generateAccentureXmlConfig should output valid Eclipse profile XML', () => {
