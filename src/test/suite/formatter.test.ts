@@ -88,11 +88,12 @@ describe('Accenture Java Formatter Test Suite', () => {
         const formatter = new JavaFormatter(ACCENTURE_DEFAULT_CONFIG);
         const formatted = formatter.formatDocument(recordCode);
 
-        assert.ok(formatted.includes('  String name,'));
-        assert.ok(formatted.includes('  String description,'));
-        assert.ok(formatted.includes('  String category,'));
-        assert.ok(formatted.includes('  BigDecimal price,'));
-        assert.ok(formatted.includes('  long version) {'));
+        assert.ok(formatted.includes('    String name,'));
+        assert.ok(formatted.includes('    String description,'));
+        assert.ok(formatted.includes('    String category,'));
+        assert.ok(formatted.includes('    BigDecimal price,'));
+        assert.ok(formatted.includes('    long version) {'));
+        assert.ok(formatted.includes('  public long nextVersion() {'));
         assert.ok(formatted.includes('    return version + 1;'));
     });
 

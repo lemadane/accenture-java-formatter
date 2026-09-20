@@ -160,11 +160,12 @@ describe('Accenture Java Formatter E2E Test Suite', () => {
         await vscode.commands.executeCommand('accentureJava.format.document');
 
         const formattedRecordText = testDoc.getText();
-        assert.ok(formattedRecordText.includes('  String name,'));
-        assert.ok(formattedRecordText.includes('  String description,'));
-        assert.ok(formattedRecordText.includes('  String category,'));
-        assert.ok(formattedRecordText.includes('  BigDecimal price,'));
-        assert.ok(formattedRecordText.includes('  long version) {'));
+        assert.ok(formattedRecordText.includes('    String name,'));
+        assert.ok(formattedRecordText.includes('    String description,'));
+        assert.ok(formattedRecordText.includes('    String category,'));
+        assert.ok(formattedRecordText.includes('    BigDecimal price,'));
+        assert.ok(formattedRecordText.includes('    long version) {'));
+        assert.ok(formattedRecordText.includes('  public long nextVersion() {'));
         assert.ok(formattedRecordText.includes('    return version + 1;'));
     });
 

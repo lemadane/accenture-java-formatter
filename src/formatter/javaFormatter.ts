@@ -57,7 +57,8 @@ export class JavaFormatter {
 
     private formatLinesWithIndent(lines: string[], initialIndentLevel: number): string[] {
         const indentStr = this.config.insertSpaces ? ' '.repeat(this.config.tabSize) : '\t';
-        let currentIndent = initialIndentLevel;
+        let blockIndent = initialIndentLevel;
+        let parenIndent = 0;
         const outputLines: string[] = [];
 
         let inJavadoc = false;
@@ -71,6 +72,8 @@ export class JavaFormatter {
                 outputLines.push('');
                 continue;
             }
+
+            const currentIndent = Math.max(0, blockIndent + parenIndent);
 
             // Javadoc and block comment handling
             if (line.startsWith('/**')) {
@@ -107,19 +110,24 @@ export class JavaFormatter {
                 continue;
             }
 
-            // Adjust indent level for closing braces, parens, or brackets at line start
-            const startsWithClosingSymbol = /^\s*[\}\)\]]/.test(line);
-            if (startsWithClosingSymbol) {
-                currentIndent = Math.max(0, currentIndent - 1);
+            // Adjust indent for closing symbols at line start
+            const startsWithClosingBrace = line.startsWith('}');
+            if (startsWithClosingBrace) {
+                blockIndent = Math.max(0, blockIndent - 1);
+            }
+            const startsWithClosingParen = line.startsWith(')') || line.startsWith(');');
+            if (startsWithClosingParen) {
+                parenIndent = Math.max(0, parenIndent - 2);
             }
 
             // Handle brace style option (nextLine vs sameLine)
             if (this.config.braceStyle === 'nextLine' && line.endsWith('{') && line.length > 1 && !line.startsWith('class ') && !line.startsWith('interface ')) {
                 const codeWithoutBrace = line.slice(0, -1).trim();
                 if (codeWithoutBrace.length > 0) {
-                    outputLines.push(indentStr.repeat(currentIndent) + codeWithoutBrace);
-                    outputLines.push(indentStr.repeat(currentIndent) + '{');
-                    currentIndent++;
+                    const lineIndent = Math.max(0, blockIndent + parenIndent);
+                    outputLines.push(indentStr.repeat(lineIndent) + codeWithoutBrace);
+                    outputLines.push(indentStr.repeat(lineIndent) + '{');
+                    blockIndent++;
                     continue;
                 }
             }
@@ -140,12 +148,13 @@ export class JavaFormatter {
             line = this.normalizeAnnotationSpaces(line);
 
             // Output current formatted line
-            const currentLineIndent = indentStr.repeat(currentIndent);
+            const lineIndentLevel = Math.max(0, blockIndent + parenIndent);
+            const currentLineIndent = indentStr.repeat(lineIndentLevel);
             const fullLine = currentLineIndent + line;
 
             // Line length wrapping check
             if (fullLine.length > this.config.maxLineLength && !line.startsWith('package ') && !line.startsWith('import ')) {
-                const wrapped = this.wrapLongLine(line, currentIndent, indentStr);
+                const wrapped = this.wrapLongLine(line, lineIndentLevel, indentStr);
                 outputLines.push(...wrapped);
             } else {
                 outputLines.push(fullLine);
@@ -153,16 +162,24 @@ export class JavaFormatter {
 
             // Strip string literals to safely count structure tokens
             const codeWithoutStrings = line.replace(/"([^"\\]|\\.)*"/g, '""').replace(/'([^'\\]|\\.)*'/g, "''");
-            const openTokens = (codeWithoutStrings.match(/[\{\(\[]/g) || []).length;
-            const closeTokens = (codeWithoutStrings.match(/[\}\)\]]/g) || []).length;
-            const netTokens = openTokens - closeTokens;
 
-            if (!startsWithClosingSymbol) {
-                currentIndent += netTokens;
-            } else if (netTokens > -1) {
-                currentIndent += (netTokens + 1);
+            // Character by character token scanner for net indent updates
+            for (let chIdx = 0; chIdx < codeWithoutStrings.length; chIdx++) {
+                const char = codeWithoutStrings[chIdx];
+                if (char === '{') {
+                    blockIndent++;
+                } else if (char === '}') {
+                    if (!startsWithClosingBrace) {
+                        blockIndent = Math.max(0, blockIndent - 1);
+                    }
+                } else if (char === '(' || char === '[') {
+                    parenIndent += 2; // 2x continuation indent (4 spaces) for record parameters / arguments
+                } else if (char === ')' || char === ']') {
+                    if (!startsWithClosingParen) {
+                        parenIndent = Math.max(0, parenIndent - 2);
+                    }
+                }
             }
-            currentIndent = Math.max(0, currentIndent);
         }
 
         return outputLines;
