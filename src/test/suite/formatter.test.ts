@@ -126,6 +126,8 @@ describe('Accenture Java Formatter Test Suite', () => {
         assert.ok(formatted.includes('        ResponseEntity::ok)'));
         assert.ok(formatted.includes('        .orElseGet('));
         assert.ok(formatted.includes('        () -> ResponseEntity.notFound()'));
+        assert.ok(formatted.includes('            .build());'));
+
 
     });
 

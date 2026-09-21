@@ -394,17 +394,85 @@ export class JavaFormatter {
 
                 for (const subPart of subChainParts) {
                     if (subPart.trim() !== '') {
-                        output.push(subPart.trim());
+                        const splitSub = this.splitLambdaChainedCalls(subPart.trim());
+                        for (const s of splitSub) {
+                            output.push(s);
+                        }
                     }
                 }
                 continue;
             }
 
-            output.push(isRhs ? `ASSIGN_RHS:${trimmed}` : line);
+            const splitLine = this.splitLambdaChainedCalls(line);
+            if (splitLine.length > 1) {
+                for (const s of splitLine) {
+                    output.push(s);
+                }
+            } else {
+                output.push(isRhs ? `ASSIGN_RHS:${trimmed}` : line);
+            }
         }
 
         return output;
     }
+
+    private splitLambdaChainedCalls(line: string): string[] {
+        let isRhs = false;
+        let trimmed = line.trim();
+        if (trimmed.startsWith('ASSIGN_RHS:')) {
+            isRhs = true;
+            trimmed = trimmed.slice('ASSIGN_RHS:'.length).trim();
+        }
+
+        const lambdaIdx = trimmed.indexOf('->');
+        if (lambdaIdx === -1) {
+            return [line];
+        }
+
+        const lambdaBody = trimmed.slice(lambdaIdx + 2);
+        const dotRegex = /\.[a-zA-Z0-9_]+\s*\(/g;
+        const matches: Array<{ token: string; index: number }> = [];
+        let match: RegExpExecArray | null;
+
+        while ((match = dotRegex.exec(lambdaBody)) !== null) {
+            matches.push({ token: match[0], index: match.index });
+        }
+
+        if (matches.length >= 2) {
+            const result: string[] = [];
+            const secondDotIdxInBody = matches[1].index;
+            const splitIdx = (lambdaIdx + 2) + secondDotIdxInBody;
+
+            const part1 = trimmed.slice(0, splitIdx).trim();
+            result.push(isRhs ? `ASSIGN_RHS:${part1}` : part1);
+
+            const remaining = trimmed.slice(splitIdx).trim();
+            const remMatches: Array<{ token: string; index: number }> = [];
+            let remMatch: RegExpExecArray | null;
+            const remDotRegex = /\.[a-zA-Z0-9_]+\s*\(/g;
+            while ((remMatch = remDotRegex.exec(remaining)) !== null) {
+                remMatches.push({ token: remMatch[0], index: remMatch.index });
+            }
+
+            if (remMatches.length <= 1) {
+                result.push(remaining);
+            } else {
+                let remLastIdx = 0;
+                for (let k = 1; k < remMatches.length; k++) {
+                    const chunk = remaining.slice(remLastIdx, remMatches[k].index).trim();
+                    if (chunk) result.push(chunk);
+                    remLastIdx = remMatches[k].index;
+                }
+                const lastChunk = remaining.slice(remLastIdx).trim();
+                if (lastChunk) result.push(lastChunk);
+            }
+
+            return result;
+        }
+
+        return [line];
+    }
+
 
     /**
      * Rule 7 & Rule 9: On assignment statements, right hand side of '=' can be on the next line.
@@ -605,14 +673,20 @@ export class JavaFormatter {
                         blockIndent = Math.max(0, blockIndent - 1);
                     }
                 } else if (char === '(' || char === '[') {
-                    const currentStackIndent = parenIndentStack.length > 0 ? parenIndentStack[parenIndentStack.length - 1] : 0;
-                    parenIndentStack.push(currentStackIndent + extraIndent + 2);
+                    const textAfterParen = codeWithoutStrings.slice(chIdx + 1).trim();
+                    const hasCodeAfterParen = textAfterParen !== '' && !textAfterParen.startsWith('//');
+                    const addedParenIndent = hasCodeAfterParen
+                        ? (parenIndentStack.length > 0 ? parenIndentStack[parenIndentStack.length - 1] : 2)
+                        : (lineIndentLevel + 2 - blockIndent);
+                    parenIndentStack.push(addedParenIndent);
                 } else if (char === ')' || char === ']') {
+
                     if (!startsWithClosingParen && parenIndentStack.length > 0) {
                         parenIndentStack.pop();
                     }
                 }
             }
+
         }
 
         return outputLines;

@@ -285,8 +285,79 @@ describe('Accenture Java Formatter E2E Test Suite (Rules 1-10)', () => {
         assert.ok(text.includes('        ResponseEntity::ok)'));
         assert.ok(text.includes('        .orElseGet('));
         assert.ok(text.includes('        () -> ResponseEntity.notFound()'));
-
+        assert.ok(text.includes('            .build());'));
     });
+
+    it('E2E 2-State Testing (State 1): .notFound() and .build() indented 2x (12 spaces) below .orElseGet(() -> ResponseEntity', async () => {
+        const state1Input = [
+            'package com.accenture.controller;',
+            'public class ProductController {',
+            '  @GetMapping("/{id}")',
+            '  public ResponseEntity<ProductResponse> getById(@PathVariable final UUID id) {',
+            '    return this.productService.getById(id)',
+            '        .map(ResponseEntity::ok)',
+            '        .orElseGet(() -> ResponseEntity',
+            '            .notFound()',
+            '            .build());',
+            '  }',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, state1Input);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
+
+        assert.ok(
+            text.includes(
+                '        .orElseGet(() -> ResponseEntity\n' +
+                '            .notFound()\n' +
+                '            .build());'
+            ),
+            'State 1: .notFound() and .build() must both be indented 2x (12 spaces) relative to .orElseGet(() -> ResponseEntity (8 spaces)'
+        );
+    });
+
+    it('E2E 2-State Testing (State 2): () -> ResponseEntity on new line (12 spaces) and .notFound()/.build() indented 2x (16 spaces) below it', async () => {
+        const state2Input = [
+            'package com.accenture.controller;',
+            'public class ProductController {',
+            '  @GetMapping("/{id}")',
+            '  public ResponseEntity<ProductResponse> getById(@PathVariable final UUID id) {',
+            '    return this.productService.getById(id)',
+            '        .map(ResponseEntity::ok)',
+            '        .orElseGet(',
+            '            () -> ResponseEntity',
+            '                .notFound()',
+            '                .build());',
+            '  }',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, state2Input);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
+
+        assert.ok(
+            text.includes(
+                '        .orElseGet(\n' +
+                '            () -> ResponseEntity\n' +
+                '                .notFound()\n' +
+                '                .build());'
+            ),
+            'State 2: () -> ResponseEntity must be at 12 spaces and .notFound()/.build() must both be 2x indented (16 spaces) below it'
+        );
+    });
+
+
+
 
     it('E2E Indentation Rules: 2-space base block indentation and 2x continuation indentation for multiline assignment RHS', async () => {
         const inputCode = [
