@@ -55,20 +55,17 @@ export class JavaFormatter {
     private preprocessFormattingRules(lines: string[]): string[] {
         let result = lines;
 
-        // Rule 1: Annotations on dedicated lines
-        result = this.applyRule1Annotations(result);
-
         // Rule 5: extends, implements, throws on next line
         result = this.applyRule5Clauses(result);
 
-        // Rule 3 & Rule 4: final keyword & multiline method/constructor parameters (>1)
-        result = this.applyRule3And4MethodParams(result);
+        // Rule 4: Multiline method/constructor parameters (>1)
+        result = this.applyRule4MethodParams(result);
 
-        // Rule 7 & Rule 9: Assignment statement RHS split (run before method call split to mark assignment continuation)
+        // Rule 1: Annotations on dedicated lines (runs after method params to ensure inline param annotations split)
+        result = this.applyRule1Annotations(result);
+
+        // Rule 7 & Rule 9: Assignment statement RHS split
         result = this.applyRule7AssignmentRhs(result);
-
-        // Rule 2: this. prefix on class fields inside implementations (protecting parameters & locals)
-        result = this.applyRule2ThisPrefix(result);
 
         // Rule 6: Method calls with >1 argument multiline
         result = this.applyRule6MethodCalls(result);
@@ -105,21 +102,24 @@ export class JavaFormatter {
                 continue;
             }
 
-            const firstMatchIdx = matches[0].index;
-            const lastMatchEnd = matches[matches.length - 1].index + matches[matches.length - 1].length;
-            const remainder = trimmed.slice(lastMatchEnd).trim();
-
-            if (firstMatchIdx === 0 && matches.length === 1 && remainder === '') {
+            if (matches.length === 1 && matches[0].index === 0 && matches[0].length === trimmed.length) {
                 output.push(line);
                 continue;
             }
 
+            let lastIdx = 0;
             for (const m of matches) {
+                const textBefore = trimmed.slice(lastIdx, m.index).trim();
+                if (textBefore !== '') {
+                    output.push(textBefore);
+                }
                 output.push(m.token);
+                lastIdx = m.index + m.length;
             }
 
-            if (remainder !== '') {
-                output.push(remainder);
+            const textAfter = trimmed.slice(lastIdx).trim();
+            if (textAfter !== '') {
+                output.push(textAfter);
             }
         }
 
@@ -175,10 +175,9 @@ export class JavaFormatter {
     }
 
     /**
-     * Rule 3: Add 'final' keyword to method/constructor arguments.
      * Rule 4: Method/constructor declarations with >1 argument formatted multiline (1 per line).
      */
-    private applyRule3And4MethodParams(lines: string[]): string[] {
+    private applyRule4MethodParams(lines: string[]): string[] {
         const output: string[] = [];
         let i = 0;
 
@@ -186,46 +185,39 @@ export class JavaFormatter {
             const line = lines[i];
             const trimmed = line.trim();
 
-            const isMethodOrConstructor =
+            const isMethodOrConstructorStart =
                 trimmed.includes('(') &&
-                (trimmed.endsWith('{') || (trimmed.endsWith(');') && (trimmed.startsWith('public') || trimmed.startsWith('protected') || trimmed.startsWith('private') || trimmed.startsWith('abstract')))) &&
+                !trimmed.includes('record ') && !trimmed.includes('class ') && !trimmed.includes('interface ') &&
+                (trimmed.startsWith('public ') || trimmed.startsWith('protected ') || trimmed.startsWith('private ') || trimmed.startsWith('abstract ')) &&
                 !trimmed.startsWith('if') &&
                 !trimmed.startsWith('for') &&
                 !trimmed.startsWith('while') &&
                 !trimmed.startsWith('switch') &&
                 !trimmed.startsWith('catch') &&
-                !trimmed.startsWith('@') &&
-                !trimmed.startsWith('record ') &&
                 !trimmed.startsWith('return') &&
                 !trimmed.includes(' = ');
 
-            if (isMethodOrConstructor) {
-                const openParenIdx = trimmed.indexOf('(');
-                const closeParenIdx = trimmed.lastIndexOf(')');
+            if (isMethodOrConstructorStart) {
+                let j = i + 1;
+                let fullText = trimmed;
+
+                while (j < lines.length && !fullText.includes(') {') && !fullText.endsWith('{') && !fullText.endsWith(');') && !fullText.endsWith(')')) {
+                    const nextTrimmed = lines[j].trim();
+                    fullText += ' ' + nextTrimmed;
+                    j++;
+                }
+
+                const openParenIdx = fullText.indexOf('(');
+                const closeParenIdx = fullText.lastIndexOf(')');
 
                 if (openParenIdx !== -1 && closeParenIdx > openParenIdx) {
-                    const headerPrefix = trimmed.slice(0, openParenIdx).trim();
-                    const paramsContent = trimmed.slice(openParenIdx + 1, closeParenIdx).trim();
-                    const headerSuffix = trimmed.slice(closeParenIdx + 1).trim();
+                    const headerPrefix = fullText.slice(0, openParenIdx).trim();
+                    const paramsContent = fullText.slice(openParenIdx + 1, closeParenIdx).trim();
+                    const headerSuffix = fullText.slice(closeParenIdx + 1).trim();
 
                     if (paramsContent !== '') {
                         const rawParams = this.splitParameters(paramsContent);
-                        const processedParams = rawParams.map(p => {
-                            let pTrim = p.trim();
-                            if (!pTrim.startsWith('final ') && !pTrim.startsWith('final\t')) {
-                                if (pTrim.startsWith('@')) {
-                                    const firstSpace = pTrim.indexOf(' ');
-                                    if (firstSpace !== -1) {
-                                        pTrim = pTrim.slice(0, firstSpace) + ' final ' + pTrim.slice(firstSpace + 1);
-                                    } else {
-                                        pTrim = 'final ' + pTrim;
-                                    }
-                                } else {
-                                    pTrim = 'final ' + pTrim;
-                                }
-                            }
-                            return pTrim;
-                        });
+                        const processedParams = rawParams.map(p => p.trim());
 
                         if (processedParams.length > 1) {
                             output.push(`${headerPrefix}(`);
@@ -237,11 +229,11 @@ export class JavaFormatter {
                                     output.push(`${processedParams[pIdx]},`);
                                 }
                             }
-                            i++;
+                            i = j;
                             continue;
                         } else {
                             output.push(`${headerPrefix}(${processedParams[0]})${headerSuffix ? ' ' + headerSuffix : ''}`);
-                            i++;
+                            i = j;
                             continue;
                         }
                     }
@@ -250,104 +242,6 @@ export class JavaFormatter {
 
             output.push(line);
             i++;
-        }
-
-        return output;
-    }
-
-    /**
-     * Rule 2: Include 'this.' on field implementations throughout class/record methods.
-     * Accurately distinguishes class fields from method parameters and local variables.
-     */
-    private applyRule2ThisPrefix(lines: string[]): string[] {
-        const fieldNames = new Set<string>();
-
-        // 1. Collect class field declarations and record components
-        for (const line of lines) {
-            let trimmed = line.trim();
-            if (trimmed.startsWith('ASSIGN_RHS:')) {
-                trimmed = trimmed.slice('ASSIGN_RHS:'.length).trim();
-            }
-            const fieldMatch = /(private|protected|public)\s+(final\s+)?([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+)\s*;/g.exec(trimmed);
-            if (fieldMatch) {
-                fieldNames.add(fieldMatch[4]);
-            }
-            if (trimmed.includes('record ') || lines.some(l => l.includes('record '))) {
-                const recordCompMatch = /([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+)(,|\))/g;
-                let rMatch: RegExpExecArray | null;
-                while ((rMatch = recordCompMatch.exec(trimmed)) !== null) {
-                    const candidate = rMatch[2];
-                    if (candidate !== 'class' && candidate !== 'interface' && candidate !== 'record' && candidate !== 'implements' && candidate !== 'extends') {
-                        fieldNames.add(candidate);
-                    }
-                }
-            }
-        }
-
-        if (fieldNames.size === 0) {
-            return lines;
-        }
-
-        const output: string[] = [];
-        let braceDepth = 0;
-        let methodParamNames = new Set<string>();
-        let localVariableNames = new Set<string>();
-
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i];
-            let trimmed = line.trim();
-            let prefixMarker = '';
-            if (trimmed.startsWith('ASSIGN_RHS:')) {
-                prefixMarker = 'ASSIGN_RHS:';
-                trimmed = trimmed.slice('ASSIGN_RHS:'.length).trim();
-            }
-
-            const isFieldDeclaration = /(private|protected|public)\s+(final\s+)?([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+)\s*;/.test(trimmed);
-            const isMethodHeader = trimmed.includes('(') && (trimmed.endsWith('{') || trimmed.endsWith(')'));
-            const isParameterLine = (trimmed.startsWith('final ') || trimmed.startsWith('@')) && (trimmed.endsWith(',') || trimmed.endsWith(') {') || trimmed.endsWith(')'));
-
-            // Track method parameters in method declarations
-            if (isMethodHeader || isParameterLine) {
-                const paramMatch = /(?:final\s+)?([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+)(?:,|\)|\s*\{)/g;
-                let pMatch: RegExpExecArray | null;
-                while ((pMatch = paramMatch.exec(trimmed)) !== null) {
-                    const paramName = pMatch[2];
-                    if (paramName !== 'class' && paramName !== 'interface' && paramName !== 'record' && paramName !== 'public' && paramName !== 'private') {
-                        methodParamNames.add(paramName);
-                    }
-                }
-            }
-
-            // Track local variable declarations inside methods (e.g. final var product = ...)
-            const localVarMatch = /(?:final\s+)?(?:var|[A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+)\s*=/g.exec(trimmed);
-            if (localVarMatch && braceDepth >= 2) {
-                localVariableNames.add(localVarMatch[1]);
-            }
-
-            if (trimmed.includes('{')) {
-                braceDepth++;
-            }
-
-            // Only apply this. prefix inside method body (braceDepth >= 2)
-            if (braceDepth >= 2 && !isFieldDeclaration && !isMethodHeader && !isParameterLine && !trimmed.startsWith('//') && !trimmed.startsWith('/*') && !trimmed.startsWith('package') && !trimmed.startsWith('import')) {
-                for (const field of fieldNames) {
-                    if (methodParamNames.has(field) || localVariableNames.has(field)) {
-                        continue;
-                    }
-                    const regex = new RegExp(`(?<![\\w.@])(?<!this\\.)\\b${field}\\b(?![\\w:(])`, 'g');
-                    trimmed = trimmed.replace(regex, `this.${field}`);
-                }
-            }
-
-            if (trimmed.startsWith('}')) {
-                braceDepth = Math.max(0, braceDepth - 1);
-                if (braceDepth <= 1) {
-                    methodParamNames.clear();
-                    localVariableNames.clear();
-                }
-            }
-
-            output.push(prefixMarker + trimmed);
         }
 
         return output;
@@ -415,6 +309,7 @@ export class JavaFormatter {
     /**
      * Rule 8: On chaining objects, if an object or 'this' has 2 or more chained objects/methods,
      * break each chained call (starting from second dot) onto next line including their dot.
+     * Top-level chained calls (outside paren arguments) are evaluated.
      */
     private applyRule8ChainedCalls(lines: string[]): string[] {
         const output: string[] = [];
@@ -432,25 +327,77 @@ export class JavaFormatter {
                 continue;
             }
 
-            const dotMatches = trimmed.match(/\.[a-zA-Z0-9_]+\s*\(/g);
-            if (dotMatches && dotMatches.length >= 2) {
-                const firstDotIdx = trimmed.indexOf(dotMatches[0]);
-                const secondDotIdx = trimmed.indexOf(dotMatches[1], firstDotIdx + dotMatches[0].length);
+            // Find top-level chained method calls (dots at parenDepth === 0)
+            const topLevelDotIndices: number[] = [];
+            let parenDepth = 0;
+            let bracketDepth = 0;
+            let inString = false;
+            let stringChar = '';
 
-                if (secondDotIdx !== -1) {
-                    const firstPart = trimmed.slice(0, secondDotIdx).trim();
-                    const restPart = trimmed.slice(secondDotIdx).trim();
-
-                    output.push(isRhs ? `ASSIGN_RHS:${firstPart}` : firstPart);
-
-                    const subChainParts = restPart.split(/(?=\.[a-zA-Z0-9_]+)/g);
-                    for (const subPart of subChainParts) {
-                        if (subPart.trim() !== '') {
-                            output.push(subPart.trim());
-                        }
+            for (let idx = 0; idx < trimmed.length; idx++) {
+                const char = trimmed[idx];
+                if (inString) {
+                    if (char === stringChar && trimmed[idx - 1] !== '\\') {
+                        inString = false;
                     }
                     continue;
                 }
+                if (char === '"' || char === "'") {
+                    inString = true;
+                    stringChar = char;
+                    continue;
+                }
+                if (char === '(') parenDepth++;
+                else if (char === ')') parenDepth = Math.max(0, parenDepth - 1);
+                else if (char === '[') bracketDepth++;
+                else if (char === ']') bracketDepth = Math.max(0, bracketDepth - 1);
+                else if (char === '.' && parenDepth === 0 && bracketDepth === 0) {
+                    topLevelDotIndices.push(idx);
+                }
+            }
+
+            const methodDotIndices = topLevelDotIndices.filter(idx => {
+                const rest = trimmed.slice(idx);
+                return /^\.[a-zA-Z0-9_]+\s*\(/.test(rest);
+            });
+
+            if (methodDotIndices.length >= 2) {
+                const secondDotIdx = methodDotIndices[1];
+                const firstPart = trimmed.slice(0, secondDotIdx).trim();
+                const restPart = trimmed.slice(secondDotIdx).trim();
+
+                output.push(isRhs ? `ASSIGN_RHS:${firstPart}` : firstPart);
+
+                const subChainParts: string[] = [];
+                let currentSubPart = '';
+                let subParenDepth = 0;
+
+                for (let idx = 0; idx < restPart.length; idx++) {
+                    const char = restPart[idx];
+                    if (char === '(') subParenDepth++;
+                    else if (char === ')') subParenDepth = Math.max(0, subParenDepth - 1);
+
+                    if (char === '.' && subParenDepth === 0 && idx > 0) {
+                        const rest = restPart.slice(idx);
+                        if (/^\.[a-zA-Z0-9_]+\s*\(/.test(rest)) {
+                            if (currentSubPart.trim()) {
+                                subChainParts.push(currentSubPart.trim());
+                            }
+                            currentSubPart = '';
+                        }
+                    }
+                    currentSubPart += char;
+                }
+                if (currentSubPart.trim()) {
+                    subChainParts.push(currentSubPart.trim());
+                }
+
+                for (const subPart of subChainParts) {
+                    if (subPart.trim() !== '') {
+                        output.push(subPart.trim());
+                    }
+                }
+                continue;
             }
 
             output.push(isRhs ? `ASSIGN_RHS:${trimmed}` : line);
@@ -461,12 +408,25 @@ export class JavaFormatter {
 
     /**
      * Rule 7 & Rule 9: On assignment statements, right hand side of '=' can be on the next line.
+     * The RHS is only forced onto the next line if the line length reaches maxLineLength (80).
+     * If the RHS is already on the next line (user split it) or wrapped due to line length, it is indented 2x (4 spaces).
      */
     private applyRule7AssignmentRhs(lines: string[]): string[] {
         const output: string[] = [];
+        let pendingAssignRhs = false;
 
-        for (const line of lines) {
-            const trimmed = line.trim();
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            let trimmed = line.trim();
+
+            if (pendingAssignRhs) {
+                pendingAssignRhs = false;
+                output.push(`ASSIGN_RHS:${trimmed}`);
+                continue;
+            }
+
+            trimmed = this.normalizeAssignmentSpaces(trimmed);
+            trimmed = this.normalizeParenSpaces(trimmed);
 
             const isAssignment =
                 trimmed.includes(' = ') &&
@@ -481,12 +441,25 @@ export class JavaFormatter {
                     const lhs = trimmed.slice(0, eqIdx + 2).trim();
                     const rhs = trimmed.slice(eqIdx + 3).trim();
 
-                    if (line.length >= this.config.maxLineLength || rhs.length > 15 || rhs.includes('(')) {
+                    if (line.length >= this.config.maxLineLength) {
                         output.push(lhs);
                         output.push(`ASSIGN_RHS:${rhs}`);
                         continue;
                     }
                 }
+            }
+
+            const isLineEndingWithEquals =
+                (trimmed.endsWith(' =') || trimmed.endsWith('=')) &&
+                !trimmed.startsWith('for ') &&
+                !trimmed.startsWith('if ') &&
+                !trimmed.startsWith('while ') &&
+                !trimmed.endsWith('{');
+
+            if (isLineEndingWithEquals) {
+                output.push(trimmed);
+                pendingAssignRhs = true;
+                continue;
             }
 
             output.push(line);
@@ -531,7 +504,7 @@ export class JavaFormatter {
     private formatLinesWithIndent(lines: string[], initialIndentLevel: number): string[] {
         const indentStr = this.config.insertSpaces ? ' '.repeat(this.config.tabSize) : '\t';
         let blockIndent = initialIndentLevel;
-        let parenIndent = 0;
+        const parenIndentStack: number[] = [];
         const outputLines: string[] = [];
 
         let inJavadoc = false;
@@ -551,21 +524,31 @@ export class JavaFormatter {
                 isAssignRhs = true;
             }
 
+            const startsWithClosingBrace = line.startsWith('}');
+            if (startsWithClosingBrace) {
+                blockIndent = Math.max(0, blockIndent - 1);
+            }
+            const startsWithClosingParen = line.startsWith(')') || line.startsWith(');');
+            if (startsWithClosingParen && parenIndentStack.length > 0) {
+                parenIndentStack.pop();
+            }
+
+            const parenIndent = parenIndentStack.length > 0 ? parenIndentStack[parenIndentStack.length - 1] : 0;
             const isContinuationLine = isAssignRhs || line.startsWith('.') || line.startsWith('extends') || line.startsWith('implements') || line.startsWith('throws');
             const extraIndent = isContinuationLine ? 2 : 0;
-            const currentIndent = Math.max(0, blockIndent + parenIndent + extraIndent);
+            const lineIndentLevel = Math.max(0, blockIndent + parenIndent + extraIndent);
 
             if (line.startsWith('/**')) {
                 inJavadoc = true;
-                outputLines.push(indentStr.repeat(currentIndent) + line);
+                outputLines.push(indentStr.repeat(lineIndentLevel) + line);
                 if (line.endsWith('*/')) inJavadoc = false;
                 continue;
             }
             if (inJavadoc) {
                 if (line.startsWith('*')) {
-                    outputLines.push(indentStr.repeat(currentIndent) + ' ' + line);
+                    outputLines.push(indentStr.repeat(lineIndentLevel) + ' ' + line);
                 } else {
-                    outputLines.push(indentStr.repeat(currentIndent) + line);
+                    outputLines.push(indentStr.repeat(lineIndentLevel) + line);
                 }
                 if (line.includes('*/')) inJavadoc = false;
                 continue;
@@ -573,48 +556,39 @@ export class JavaFormatter {
 
             if (line.startsWith('/*')) {
                 inBlockComment = true;
-                outputLines.push(indentStr.repeat(currentIndent) + line);
+                outputLines.push(indentStr.repeat(lineIndentLevel) + line);
                 if (line.endsWith('*/')) inBlockComment = false;
                 continue;
             }
             if (inBlockComment) {
-                outputLines.push(indentStr.repeat(currentIndent) + line);
+                outputLines.push(indentStr.repeat(lineIndentLevel) + line);
                 if (line.includes('*/')) inBlockComment = false;
                 continue;
             }
 
             if (line.startsWith('//')) {
-                outputLines.push(indentStr.repeat(currentIndent) + line);
+                outputLines.push(indentStr.repeat(lineIndentLevel) + line);
                 continue;
-            }
-
-            const startsWithClosingBrace = line.startsWith('}');
-            if (startsWithClosingBrace) {
-                blockIndent = Math.max(0, blockIndent - 1);
-            }
-            const startsWithClosingParen = line.startsWith(')') || line.startsWith(');');
-            if (startsWithClosingParen) {
-                parenIndent = Math.max(0, parenIndent - 2);
             }
 
             if (this.config.braceStyle === 'nextLine' && line.endsWith('{') && line.length > 1 && !line.startsWith('class ') && !line.startsWith('interface ')) {
                 const codeWithoutBrace = line.slice(0, -1).trim();
                 if (codeWithoutBrace.length > 0) {
-                    const lineIndent = Math.max(0, blockIndent + parenIndent + extraIndent);
-                    outputLines.push(indentStr.repeat(lineIndent) + codeWithoutBrace);
-                    outputLines.push(indentStr.repeat(lineIndent) + '{');
+                    outputLines.push(indentStr.repeat(lineIndentLevel) + codeWithoutBrace);
+                    outputLines.push(indentStr.repeat(lineIndentLevel) + '{');
                     blockIndent++;
                     continue;
                 }
             }
 
             line = this.normalizeControlFlowSpaces(line);
+            line = this.normalizeAssignmentSpaces(line);
             line = this.normalizeOperatorSpaces(line);
+            line = this.normalizeParenSpaces(line);
             line = this.normalizeCommaSpaces(line);
             line = this.normalizeBraceSpaces(line);
             line = this.normalizeAnnotationSpaces(line);
 
-            const lineIndentLevel = Math.max(0, blockIndent + parenIndent + extraIndent);
             const currentLineIndent = indentStr.repeat(lineIndentLevel);
             const fullLine = currentLineIndent + line;
 
@@ -631,10 +605,11 @@ export class JavaFormatter {
                         blockIndent = Math.max(0, blockIndent - 1);
                     }
                 } else if (char === '(' || char === '[') {
-                    parenIndent += 2;
+                    const currentStackIndent = parenIndentStack.length > 0 ? parenIndentStack[parenIndentStack.length - 1] : 0;
+                    parenIndentStack.push(currentStackIndent + extraIndent + 2);
                 } else if (char === ')' || char === ']') {
-                    if (!startsWithClosingParen) {
-                        parenIndent = Math.max(0, parenIndent - 2);
+                    if (!startsWithClosingParen && parenIndentStack.length > 0) {
+                        parenIndentStack.pop();
                     }
                 }
             }
@@ -642,6 +617,7 @@ export class JavaFormatter {
 
         return outputLines;
     }
+
 
     private normalizeControlFlowSpaces(line: string): string {
         return line
@@ -654,6 +630,33 @@ export class JavaFormatter {
             .replace(/\}\s*else\b/g, '} else')
             .replace(/\}\s*catch\b/g, '} catch')
             .replace(/\}\s*finally\b/g, '} finally');
+    }
+
+    private normalizeAssignmentSpaces(line: string): string {
+        if (line.includes('==') || line.includes('!=') || line.includes('<=') || line.includes('>=') || line.includes('->')) {
+            return line;
+        }
+        return line.replace(/([a-zA-Z0-9_\>\]\)])=([a-zA-Z0-9_\<\(\"\@])/g, '$1 = $2');
+    }
+
+    private normalizeParenSpaces(line: string): string {
+        // Protect string literals while removing excess inner paren spaces
+        const parts: string[] = [];
+        const regex = /("([^"\\]|\\.)*"|'([^'\\]|\\.)*')/g;
+        let lastIdx = 0;
+        let match: RegExpExecArray | null;
+
+        while ((match = regex.exec(line)) !== null) {
+            const codeBefore = line.slice(lastIdx, match.index);
+            parts.push(codeBefore.replace(/\(\s+/g, '(').replace(/\s+\)/g, ')'));
+            parts.push(match[0]); // keep string literal unchanged
+            lastIdx = match.index + match[0].length;
+        }
+
+        const codeRest = line.slice(lastIdx);
+        parts.push(codeRest.replace(/\(\s+/g, '(').replace(/\s+\)/g, ')'));
+
+        return parts.join('');
     }
 
     private normalizeAnnotationSpaces(line: string): string {

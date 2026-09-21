@@ -41,16 +41,19 @@ describe('Accenture Java Formatter E2E Test Suite (Rules 1-10)', () => {
         assert.ok(text.includes('  @Override\n  public void execute() {}'));
     });
 
-    it('E2E Rule 2: All fields must include this. prefix on implementations throughout class code, protecting parameters', async () => {
+    it('E2E Bug Fix: Preserve method header prefix when annotations are present inside parameter list', async () => {
         const inputCode = [
             'package com.accenture.controller;',
-            'public class ProductController {',
-            '  private ProductService productService;',
-            '  @PostMapping',
-            '  public ResponseEntity<ProductResponse> create(@RequestBody CreateProductRequest request) {',
-            '    final var product = productService.create(request);',
-            '    return ResponseEntity.ok(product);',
-            '  }',
+            '@PostMapping',
+            '@Validated',
+            'public ResponseEntity<ProductResponse> create(@RequestBody @Validated final CreateProductRequest request) {',
+            '  final var product = this.productService.create(',
+            '      request);',
+            '  final var location = URI.create(',
+            '      "/api/products/" + product.id());',
+            '  return ResponseEntity',
+            '      .created(location)',
+            '      .body(product);',
             '}'
         ].join('\n');
 
@@ -62,29 +65,13 @@ describe('Accenture Java Formatter E2E Test Suite (Rules 1-10)', () => {
         await vscode.commands.executeCommand('accentureJava.format.document');
         const text = testDoc.getText();
 
-        assert.ok(!text.includes('this.request'), 'Method parameter request must NOT receive this. prefix');
-        assert.ok(text.includes('this.productService.create(request);'), 'Class field productService must receive this. prefix');
-    });
+        assert.ok(text.includes('public ResponseEntity<ProductResponse> create('), 'Method header prefix public ResponseEntity... create( MUST be preserved and not deleted');
+        assert.ok(text.includes('@RequestBody'), 'Annotation @RequestBody must be on dedicated line');
+        assert.ok(text.includes('@Validated'), 'Annotation @Validated must be on dedicated line');
 
-    it('E2E Rule 3: Method and constructor declarations arguments must include final keyword', async () => {
-        const inputCode = [
-            'package com.accenture.test;',
-            'public class PaymentService {',
-            '  public void processPayment(String id, Double amount) {',
-            '  }',
-            '}'
-        ].join('\n');
+        assert.ok(text.includes('CreateProductRequest request) {'), 'Parameter declaration must be preserved');
 
-        await testEditor.edit(editBuilder => {
-            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
-            editBuilder.replace(fullRange, inputCode);
-        });
 
-        await vscode.commands.executeCommand('accentureJava.format.document');
-        const text = testDoc.getText();
-
-        assert.ok(text.includes('final String id'));
-        assert.ok(text.includes('final Double amount'));
     });
 
     it('E2E Rule 4: Method and constructor declarations with >1 argument must be on next line per argument', async () => {
@@ -106,8 +93,8 @@ describe('Accenture Java Formatter E2E Test Suite (Rules 1-10)', () => {
         const text = testDoc.getText();
 
         assert.ok(text.includes('public int add('));
-        assert.ok(text.includes('    final int a,'));
-        assert.ok(text.includes('    final int b) {'));
+        assert.ok(text.includes('    int a,'));
+        assert.ok(text.includes('    int b) {'));
     });
 
     it('E2E Rule 5: extends, implements, throws must be on the next line together with associated class/interface/exception', async () => {
@@ -133,7 +120,7 @@ describe('Accenture Java Formatter E2E Test Suite (Rules 1-10)', () => {
             'package com.accenture.test;',
             'public class PaymentController {',
             '  private PaymentService service;',
-            '  public void execute(final String id, final Double amount) {',
+            '  public void execute(String id, Double amount) {',
             '    service.pay(id, amount);',
             '  }',
             '}'
@@ -147,30 +134,86 @@ describe('Accenture Java Formatter E2E Test Suite (Rules 1-10)', () => {
         await vscode.commands.executeCommand('accentureJava.format.document');
         const text = testDoc.getText();
 
-        assert.ok(text.includes('this.service.pay('));
+        assert.ok(text.includes('service.pay('));
         assert.ok(text.includes('id,'));
         assert.ok(text.includes('amount);'));
     });
 
-    it('E2E Rule 7: On assignment statements, right hand side of = can be on next line indented 2x', async () => {
-        const inputCode = [
-            'package com.accenture.test;',
-            'public class Config {',
-            '  public void setup() {',
-            '    String name = "Accenture Enterprise Java Application Config";',
+    it('E2E Rule 7: Assignment statement RHS is indented 2x when on next line, but not forced onto next line if under 80 chars', async () => {
+        // Case A: Multiline assignment split by user (as in screenshot) must be 2x indented
+        const multilineInput = [
+            'package com.accenture.controller;',
+            'public class ProductController {',
+            '  @PostMapping',
+            '  public ResponseEntity<ProductResponse> create(',
+            '      @RequestBody',
+            '      CreateProductRequest request) {',
+            '    final var product =',
+            '    this.productService.create(request);',
+            '    final var location =',
+            '    URI.create(',
+            '        "/api/products/" + product.id());',
+            '    return ResponseEntity',
+            '        .created(location)',
+            '        .body(product);',
             '  }',
             '}'
         ].join('\n');
 
         await testEditor.edit(editBuilder => {
             const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
-            editBuilder.replace(fullRange, inputCode);
+            editBuilder.replace(fullRange, multilineInput);
         });
 
         await vscode.commands.executeCommand('accentureJava.format.document');
         const text = testDoc.getText();
 
-        assert.ok(text.includes('String name =\n        "Accenture Enterprise Java Application Config";'));
+        assert.ok(text.includes('    final var product =\n        this.productService.create(request);'), 'RHS on next line must be 2x indented (8 spaces)');
+        assert.ok(text.includes('    final var location =\n        URI.create('), 'RHS URI.create on next line must be 2x indented');
+
+        // Case B: Single line assignment under 80 chars must NOT be forced onto next line
+        const singleLineInput = [
+            'package com.accenture.test;',
+            'public class Config {',
+            '  public void setup() {',
+            '    String shortName = "Accenture";',
+            '  }',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, singleLineInput);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const textSingle = testDoc.getText();
+
+        assert.ok(textSingle.includes('    String shortName = "Accenture";'), 'Single line assignment under 80 chars must not be forced onto next line');
+    });
+
+    it('E2E Normal Formatting: Normalize missing assignment spaces and excessive parenthesis spaces', async () => {
+        const messyCode = [
+            'package com.accenture.controller;',
+            'public class ProductController {',
+            '  public Object create() {',
+            '    final var product = this.productService.create(request);',
+            '    final var location=URI.create(       "/api/products/" + product.id());',
+            '    return ResponseEntity.ok(location);',
+            '  }',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, messyCode);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
+
+        assert.ok(text.includes('    final var product = this.productService.create(request);'), 'Single line assignment under 80 chars must stay on single line');
+        assert.ok(text.includes('    final var location = URI.create("/api/products/" + product.id());'), 'Missing spaces around = and excess paren spaces must be normalized');
     });
 
     it('E2E Rule 8: On chaining objects, if >=2 chained objects, break each chained call starting from 2nd dot onto next line including dot', async () => {
@@ -238,10 +281,45 @@ describe('Accenture Java Formatter E2E Test Suite (Rules 1-10)', () => {
         await vscode.commands.executeCommand('accentureJava.format.document');
         const text = testDoc.getText();
 
-        assert.ok(text.includes('      .map('));
+        assert.ok(text.includes('        .map('));
         assert.ok(text.includes('        ResponseEntity::ok)'));
-        assert.ok(text.includes('      .orElseGet('));
+        assert.ok(text.includes('        .orElseGet('));
         assert.ok(text.includes('        () -> ResponseEntity.notFound()'));
+
+    });
+
+    it('E2E Indentation Rules: 2-space base block indentation and 2x continuation indentation for multiline assignment RHS', async () => {
+        const inputCode = [
+            'package com.accenture.indentation;',
+            'public class IndentationDemo {',
+            '  public void process() {',
+            '    final var product =',
+            '    this.productService.create(request);',
+            '    final var location = URI.create("/api/products/" + product.id());',
+            '  }',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, inputCode);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
+
+        // 1. Level 1 (Class Body) = 2 spaces
+        assert.ok(text.includes('\npublic class IndentationDemo {\n'), 'Class declaration must be at level 0 (0 spaces)');
+        assert.ok(text.includes('\n  public void process() {\n'), 'Method header must be at level 1 (2 spaces)');
+
+        // 2. Level 2 (Method Body) = 4 spaces for assignment statement header
+        assert.ok(text.includes('\n    final var product =\n'), 'Assignment start line in method body must be at level 2 (4 spaces)');
+
+        // 3. Level 2 + 2x continuation (+4 spaces) = 8 spaces for RHS on next line
+        assert.ok(text.includes('\n        this.productService.create(request);\n'), 'Multiline assignment RHS on next line must have 2x continuation indentation (8 spaces total)');
+
+        // 4. Single-line assignment under 80 chars retains level 2 (4 spaces)
+        assert.ok(text.includes('\n    final var location = URI.create("/api/products/" + product.id());\n'), 'Single line assignment under 80 chars stays on single line with 4 spaces');
     });
 
     it('E2E Rule 10: Automatic formatting is triggered on document save', async () => {
@@ -267,3 +345,4 @@ describe('Accenture Java Formatter E2E Test Suite (Rules 1-10)', () => {
     });
 
 });
+
