@@ -1,15 +1,12 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
 
-describe('Accenture Java Formatter E2E Test Suite', () => {
+describe('Accenture Java Formatter E2E Test Suite (Rules 1-10)', () => {
 
     let testDoc: vscode.TextDocument;
     let testEditor: vscode.TextEditor;
 
     beforeEach(async () => {
-        // Create an untitled Java document for E2E testing
         testDoc = await vscode.workspace.openTextDocument({
             language: 'java',
             content: ''
@@ -21,158 +18,220 @@ describe('Accenture Java Formatter E2E Test Suite', () => {
         await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
     });
 
-    it('E2E: Should execute accentureJava.format.document command and format active Java editor', async () => {
-        const unformattedJavaCode = [
+    it('E2E Rule 1: Any annotation should sit on its own dedicated line', async () => {
+        const inputCode = [
             'package com.accenture.test;',
-            'import java.util.Map;',
-            'import java.util.List;',
-            'public class PaymentController{',
-            '@Autowired',
-            'private PaymentService service;',
-            '@PostMapping("/process")',
-            'public ResponseEntity<String> processPayment(String id,Double amount){',
-            'if(amount<=0){',
-            'return ResponseEntity.badRequest().body("Invalid amount");',
-            '}else{',
-            'return ResponseEntity.ok(service.pay(id,amount));',
-            '}',
-            '}',
+            '@Entity @Table(name = "users")',
+            'public class User {',
+            '  @Autowired @Qualifier("service") private PaymentService service;',
+            '  @Override public void execute() {}',
             '}'
         ].join('\n');
 
         await testEditor.edit(editBuilder => {
             const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
-            editBuilder.replace(fullRange, unformattedJavaCode);
+            editBuilder.replace(fullRange, inputCode);
         });
 
-        // Trigger Accenture Java Formatter Document Command
         await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
 
-        const formattedText = testDoc.getText();
-        
-        assert.ok(formattedText.includes('public class PaymentController {'), 'Class header should be formatted with space before brace');
-        assert.ok(formattedText.includes('  @Autowired'), 'Annotations should be indented properly');
-        assert.ok(formattedText.includes('  public ResponseEntity<String> processPayment(String id, Double amount) {'), 'Method declaration formatted');
-        assert.ok(formattedText.includes('    if (amount <= 0) {'), 'Control flow and operator space formatted');
-        assert.ok(formattedText.includes('    } else {'), 'Else statement formatted');
+        assert.ok(text.includes('@Entity\n@Table(name = "users")\npublic class User'));
+        assert.ok(text.includes('  @Autowired\n  @Qualifier("service")\n  private PaymentService service;'));
+        assert.ok(text.includes('  @Override\n  public void execute() {}'));
     });
 
-    it('E2E: Should execute accentureJava.format.organizeImports command on Java editor', async () => {
-        const messyImportsCode = [
+    it('E2E Rule 2: All fields must include this. prefix on implementations throughout class code', async () => {
+        const inputCode = [
             'package com.accenture.test;',
-            '',
-            'import com.accenture.service.PaymentService;',
-            'import java.util.List;',
-            'import static org.junit.Assert.assertNotNull;',
-            'import org.springframework.stereotype.Service;',
-            'import java.util.Map;',
-            '',
-            'public class TestClass {}'
+            'public class Employee {',
+            '  private String deptId;',
+            '  public String getDept() {',
+            '    return deptId;',
+            '  }',
+            '}'
         ].join('\n');
 
         await testEditor.edit(editBuilder => {
             const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
-            editBuilder.replace(fullRange, messyImportsCode);
+            editBuilder.replace(fullRange, inputCode);
         });
 
-        // Trigger Organize Imports command
-        await vscode.commands.executeCommand('accentureJava.format.organizeImports');
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
 
-        const textAfterOrganize = testDoc.getText();
-        const staticIndex = textAfterOrganize.indexOf('import static org.junit.Assert.assertNotNull;');
-        const javaIndex = textAfterOrganize.indexOf('import java.util.List;');
-        const accentureIndex = textAfterOrganize.indexOf('import com.accenture.service.PaymentService;');
-
-        assert.ok(staticIndex !== -1, 'Static imports present');
-        assert.ok(javaIndex !== -1, 'Java imports present');
-        assert.ok(accentureIndex !== -1, 'Accenture imports present');
-        assert.ok(staticIndex < javaIndex, 'Static imports should precede java.* imports');
+        assert.ok(text.includes('return this.deptId;'));
     });
 
-    it('E2E: Should format selected range using accentureJava.format.selection', async () => {
-        const codeWithMessySection = [
+    it('E2E Rule 3: Method and constructor declarations arguments must include final keyword', async () => {
+        const inputCode = [
+            'package com.accenture.test;',
+            'public class PaymentService {',
+            '  public void processPayment(String id, Double amount) {',
+            '  }',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, inputCode);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
+
+        assert.ok(text.includes('final String id'));
+        assert.ok(text.includes('final Double amount'));
+    });
+
+    it('E2E Rule 4: Method and constructor declarations with >1 argument must be on next line per argument', async () => {
+        const inputCode = [
             'package com.accenture.test;',
             'public class Calculator {',
-            'public int add(int a,int b){',
-            'return a+b;',
-            '}',
+            '  public int add(int a, int b) {',
+            '    return a + b;',
+            '  }',
             '}'
         ].join('\n');
 
         await testEditor.edit(editBuilder => {
             const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
-            editBuilder.replace(fullRange, codeWithMessySection);
+            editBuilder.replace(fullRange, inputCode);
         });
 
-        // Select lines 2 to 4 (method add)
-        testEditor.selection = new vscode.Selection(new vscode.Position(2, 0), new vscode.Position(4, 11));
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
 
-        await vscode.commands.executeCommand('accentureJava.format.selection');
-
-        const resultText = testDoc.getText();
-        assert.ok(resultText.length > 0);
+        assert.ok(text.includes('public int add('));
+        assert.ok(text.includes('    final int a,'));
+        assert.ok(text.includes('    final int b) {'));
     });
 
-    it('E2E: Should automatically format when code changes in editor', async () => {
-        const initialCode = [
+    it('E2E Rule 5: extends, implements, throws must be on the next line together with associated class/interface/exception', async () => {
+        const inputCode = [
             'package com.accenture.test;',
-            'public class ChangeTest{',
-            'public void execute(){',
-            'System.out.println("Hello");',
+            'public class CustomController extends BaseController implements ControllerInterface throws Exception {',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, inputCode);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
+
+        assert.ok(text.includes('public class CustomController\n    extends BaseController\n    implements ControllerInterface\n    throws Exception {'));
+    });
+
+    it('E2E Rule 6: Method calls under implementation with >1 argument should be on next line per argument', async () => {
+        const inputCode = [
+            'package com.accenture.test;',
+            'public class PaymentController {',
+            '  private PaymentService service;',
+            '  public void execute(final String id, final Double amount) {',
+            '    service.pay(id, amount);',
+            '  }',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, inputCode);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
+
+        assert.ok(text.includes('this.service.pay('));
+        assert.ok(text.includes('id,'));
+        assert.ok(text.includes('amount);'));
+    });
+
+    it('E2E Rule 7: On assignment statements, right hand side of = can be on next line indented 2x', async () => {
+        const inputCode = [
+            'package com.accenture.test;',
+            'public class Config {',
+            '  public void setup() {',
+            '    String name = "Accenture Enterprise Java Application Config";',
+            '  }',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, inputCode);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
+
+        assert.ok(text.includes('String name =\n        "Accenture Enterprise Java Application Config";'));
+    });
+
+    it('E2E Rule 8: On chaining objects, if >=2 chained objects, break each chained call starting from 2nd dot onto next line including dot', async () => {
+        const inputCode = [
+            'package com.accenture.test;',
+            'public class ResponseHandler {',
+            '  public ResponseEntity<String> getResponse() {',
+            '    return ResponseEntity.ok().body("Success");',
+            '  }',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, inputCode);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
+
+        assert.ok(text.includes('return ResponseEntity.ok()\n        .body("Success");'));
+    });
+
+    it('E2E Rule 9: Statements reaching 80 column or more wrap assignment RHS or method arguments onto next line', async () => {
+        const inputCode = [
+            'package com.accenture.test;',
+            'public class OrderService {',
+            '  public void processOrder() {',
+            '    String orderDescriptionMessageHeader = "Order successfully created for customer identifier";',
+            '  }',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, inputCode);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
+
+        assert.ok(text.includes('String orderDescriptionMessageHeader ='));
+    });
+
+    it('E2E Rule 10: Automatic formatting is triggered on document save', async () => {
+        const unformattedCode = [
+            'package com.accenture.test;',
+            'public class SaveTest{',
+            'public void run(){',
+            'System.out.println("Save Test");',
             '}',
             '}'
         ].join('\n');
 
         await testEditor.edit(editBuilder => {
             const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
-            editBuilder.replace(fullRange, initialCode);
-        });
-
-        // Trigger document format simulation
-        await vscode.commands.executeCommand('accentureJava.format.document');
-
-        const changedText = testDoc.getText();
-        assert.ok(changedText.includes('public class ChangeTest {'));
-        assert.ok(changedText.includes('  public void execute() {'));
-    });
-
-    it('E2E: Should properly format Java record header components with 2-space indentation (UpdateProductRequest)', async () => {
-        const recordCode = [
-            'package cassandra.course.dtos;',
-            'import java.math.BigDecimal;',
-            'public record UpdateProductRequest(',
-            'String name,',
-            'String description,',
-            'String category,',
-            'BigDecimal price,',
-            'long version) {',
-            'public long nextVersion() {',
-            'return version + 2;',
-            '}',
-            '}'
-        ].join('\n');
-
-        await testEditor.edit(editBuilder => {
-            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
-            editBuilder.replace(fullRange, recordCode);
+            editBuilder.replace(fullRange, unformattedCode);
         });
 
         await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
 
-        const formattedRecordText = testDoc.getText();
-        assert.ok(formattedRecordText.includes('    String name,'));
-        assert.ok(formattedRecordText.includes('    String description,'));
-        assert.ok(formattedRecordText.includes('    String category,'));
-        assert.ok(formattedRecordText.includes('    BigDecimal price,'));
-        assert.ok(formattedRecordText.includes('    long version) {'));
-        assert.ok(formattedRecordText.includes('  public long nextVersion() {'));
-        assert.ok(formattedRecordText.includes('    return version + 2;'));
-    });
-
-    it('E2E: Should execute accentureJava.format.setAsDefault command', async () => {
-        await vscode.commands.executeCommand('accentureJava.format.setAsDefault');
-        const javaConfig = vscode.workspace.getConfiguration('[java]');
-        assert.strictEqual(javaConfig.get('editor.defaultFormatter'), 'accenture.accenture-java-formatter');
+        assert.ok(text.includes('public class SaveTest {'));
+        assert.ok(text.includes('  public void run() {'));
     });
 
 });

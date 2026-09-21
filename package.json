@@ -105,7 +105,7 @@
         },
         "accentureJava.format.maxLineLength": {
           "type": "integer",
-          "default": 120,
+          "default": 80,
           "description": "Maximum character length per line before wrapping."
         },
         "accentureJava.format.comments.enabled": {
@@ -120,12 +120,12 @@
         },
         "accentureJava.format.onSave": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Automatically format Java document on save."
         },
         "accentureJava.format.formatOnChange": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Automatically trigger Accenture Java Formatter when Java code changes in the editor."
         }
       }

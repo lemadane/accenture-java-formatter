@@ -60,7 +60,7 @@ describe('Accenture Java Formatter Test Suite', () => {
 
         assert.ok(formatted.includes('public class EmployeeService {'));
         assert.ok(formatted.includes('  @Override'));
-        assert.ok(formatted.includes('  public List<String> getEmployees(String deptId) {'));
+        assert.ok(formatted.includes('  public List<String> getEmployees(final String deptId) {'));
         assert.ok(formatted.includes('    if (deptId == null) {'));
         assert.ok(formatted.includes('      return null;'));
         assert.ok(formatted.includes('    } else {'));
@@ -94,7 +94,7 @@ describe('Accenture Java Formatter Test Suite', () => {
         assert.ok(formatted.includes('    BigDecimal price,'));
         assert.ok(formatted.includes('    long version) {'));
         assert.ok(formatted.includes('  public long nextVersion() {'));
-        assert.ok(formatted.includes('    return version + 2;'));
+        assert.ok(formatted.includes('    return this.version + 2;'));
     });
 
     it('generateAccentureXmlConfig should output valid Eclipse profile XML', () => {

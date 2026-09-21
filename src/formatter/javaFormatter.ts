@@ -9,10 +9,9 @@ export class JavaFormatter {
     }
 
     public formatDocument(sourceCode: string): string {
-        const rawLines = sourceCode.split(/\r?\n/);
+        let lines = sourceCode.split(/\r?\n/);
         
         // 1. Organize imports if enabled
-        let lines = rawLines;
         if (this.config.organizeImportsOnFormat) {
             const importResult = organizeJavaImports(lines);
             if (importResult.hasImports) {
@@ -23,7 +22,10 @@ export class JavaFormatter {
             }
         }
 
-        // 2. Format structure, indentation, braces, annotations & line wrapping
+        // 2. Pre-process AST formatting rules (Rules 1-8)
+        lines = this.preprocessFormattingRules(lines);
+
+        // 3. Format structure, indentation, braces, annotations & line wrapping (Rule 9)
         return this.formatCodeLines(lines);
     }
 
@@ -31,7 +33,6 @@ export class JavaFormatter {
         const rawLines = sourceCode.split(/\r?\n/);
         const targetRange = rawLines.slice(startLine, endLine + 1);
         
-        // Compute base indent of range start
         let baseIndentLevel = 0;
         for (let i = 0; i < Math.min(startLine, rawLines.length); i++) {
             const line = rawLines[i].trim();
@@ -43,11 +44,433 @@ export class JavaFormatter {
             }
         }
 
-        const formattedRangeLines = this.formatLinesWithIndent(targetRange, baseIndentLevel);
+        const processedRange = this.preprocessFormattingRules(targetRange);
+        const formattedRangeLines = this.formatLinesWithIndent(processedRange, baseIndentLevel);
         
         const before = rawLines.slice(0, startLine);
         const after = rawLines.slice(endLine + 1);
         return [...before, ...formattedRangeLines, ...after].join('\n');
+    }
+
+    private preprocessFormattingRules(lines: string[]): string[] {
+        let result = lines;
+
+        // Rule 1: Annotations on dedicated lines
+        result = this.applyRule1Annotations(result);
+
+        // Rule 5: extends, implements, throws on next line
+        result = this.applyRule5Clauses(result);
+
+        // Rule 3 & Rule 4: final keyword & multiline method/constructor parameters (>1)
+        result = this.applyRule3And4MethodParams(result);
+
+        // Rule 2: this. prefix on class fields inside implementations
+        result = this.applyRule2ThisPrefix(result);
+
+        // Rule 6: Method calls with >1 argument multiline
+        result = this.applyRule6MethodCalls(result);
+
+        // Rule 8: Object chaining >= 2 dots
+        result = this.applyRule8ChainedCalls(result);
+
+        // Rule 7 & Rule 9: Assignment statement RHS split
+        result = this.applyRule7AssignmentRhs(result);
+
+        return result;
+    }
+
+    /**
+     * Rule 1: Any annotation should sit on its own dedicated line.
+     */
+    private applyRule1Annotations(lines: string[]): string[] {
+        const output: string[] = [];
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.includes('@') || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
+                output.push(line);
+                continue;
+            }
+
+            const annotationRegex = /@\w+(\([^)]*\))?/g;
+            const matches: Array<{ token: string; index: number; length: number }> = [];
+            let match: RegExpExecArray | null;
+
+            while ((match = annotationRegex.exec(trimmed)) !== null) {
+                matches.push({ token: match[0], index: match.index, length: match[0].length });
+            }
+
+            if (matches.length === 0) {
+                output.push(line);
+                continue;
+            }
+
+            const firstMatchIdx = matches[0].index;
+            const lastMatchEnd = matches[matches.length - 1].index + matches[matches.length - 1].length;
+            const remainder = trimmed.slice(lastMatchEnd).trim();
+
+            if (firstMatchIdx === 0 && matches.length === 1 && remainder === '') {
+                output.push(line);
+                continue;
+            }
+
+            for (const m of matches) {
+                output.push(m.token);
+            }
+
+            if (remainder !== '') {
+                output.push(remainder);
+            }
+        }
+
+        return output;
+    }
+
+    /**
+     * Rule 5: extends, implements, throws on the next line together with associated class/interface/exception
+     */
+    private applyRule5Clauses(lines: string[]): string[] {
+        const output: string[] = [];
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
+                output.push(line);
+                continue;
+            }
+
+            const hasExtends = /\bextends\b/.test(trimmed) && !trimmed.startsWith('extends');
+            const hasImplements = /\bimplements\b/.test(trimmed) && !trimmed.startsWith('implements');
+            const hasThrows = /\bthrows\b/.test(trimmed) && !trimmed.startsWith('throws');
+
+            if (!hasExtends && !hasImplements && !hasThrows) {
+                output.push(line);
+                continue;
+            }
+
+            const clauseRegex = /\b(extends|implements|throws)\b/g;
+            let lastIndex = 0;
+            let match: RegExpExecArray | null;
+            const parts: string[] = [];
+
+            while ((match = clauseRegex.exec(trimmed)) !== null) {
+                const partBefore = trimmed.slice(lastIndex, match.index).trim();
+                if (partBefore !== '') {
+                    parts.push(partBefore);
+                }
+                lastIndex = match.index;
+            }
+
+            const finalPart = trimmed.slice(lastIndex).trim();
+            if (finalPart !== '') {
+                parts.push(finalPart);
+            }
+
+            for (const part of parts) {
+                output.push(part);
+            }
+        }
+
+        return output;
+    }
+
+    /**
+     * Rule 3: Add 'final' keyword to method/constructor arguments.
+     * Rule 4: Method/constructor declarations with >1 argument formatted multiline (1 per line).
+     */
+    private applyRule3And4MethodParams(lines: string[]): string[] {
+        const output: string[] = [];
+        let i = 0;
+
+        while (i < lines.length) {
+            const line = lines[i];
+            const trimmed = line.trim();
+
+            // Match method/constructor declarations: public/protected/private or type identifier(...) {
+            const isMethodOrConstructor =
+                trimmed.includes('(') &&
+                (trimmed.endsWith('{') || (trimmed.endsWith(');') && (trimmed.startsWith('public') || trimmed.startsWith('protected') || trimmed.startsWith('private') || trimmed.startsWith('abstract')))) &&
+                !trimmed.startsWith('if') &&
+                !trimmed.startsWith('for') &&
+                !trimmed.startsWith('while') &&
+                !trimmed.startsWith('switch') &&
+                !trimmed.startsWith('catch') &&
+                !trimmed.startsWith('@') &&
+                !trimmed.startsWith('record ') &&
+                !trimmed.startsWith('return') &&
+                !trimmed.includes(' = ');
+
+            if (isMethodOrConstructor) {
+                const openParenIdx = trimmed.indexOf('(');
+                const closeParenIdx = trimmed.lastIndexOf(')');
+
+                if (openParenIdx !== -1 && closeParenIdx > openParenIdx) {
+                    const headerPrefix = trimmed.slice(0, openParenIdx).trim();
+                    const paramsContent = trimmed.slice(openParenIdx + 1, closeParenIdx).trim();
+                    const headerSuffix = trimmed.slice(closeParenIdx + 1).trim();
+
+                    if (paramsContent !== '') {
+                        const rawParams = this.splitParameters(paramsContent);
+                        const processedParams = rawParams.map(p => {
+                            let pTrim = p.trim();
+                            if (!pTrim.startsWith('final ') && !pTrim.startsWith('final\t')) {
+                                if (pTrim.startsWith('@')) {
+                                    const firstSpace = pTrim.indexOf(' ');
+                                    if (firstSpace !== -1) {
+                                        pTrim = pTrim.slice(0, firstSpace) + ' final ' + pTrim.slice(firstSpace + 1);
+                                    } else {
+                                        pTrim = 'final ' + pTrim;
+                                    }
+                                } else {
+                                    pTrim = 'final ' + pTrim;
+                                }
+                            }
+                            return pTrim;
+                        });
+
+                        if (processedParams.length > 1) {
+                            output.push(`${headerPrefix}(`);
+                            for (let pIdx = 0; pIdx < processedParams.length; pIdx++) {
+                                const isLast = pIdx === processedParams.length - 1;
+                                if (isLast) {
+                                    output.push(`${processedParams[pIdx]})${headerSuffix ? ' ' + headerSuffix : ''}`);
+                                } else {
+                                    output.push(`${processedParams[pIdx]},`);
+                                }
+                            }
+                            i++;
+                            continue;
+                        } else {
+                            output.push(`${headerPrefix}(${processedParams[0]})${headerSuffix ? ' ' + headerSuffix : ''}`);
+                            i++;
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            output.push(line);
+            i++;
+        }
+
+        return output;
+    }
+
+    /**
+     * Rule 2: Include 'this.' on field implementations throughout class/record methods.
+     */
+    private applyRule2ThisPrefix(lines: string[]): string[] {
+        const fieldNames = new Set<string>();
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            const fieldMatch = /(private|protected|public)\s+(final\s+)?([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+)\s*;/g.exec(trimmed);
+            if (fieldMatch) {
+                fieldNames.add(fieldMatch[4]);
+            }
+            if (trimmed.includes('record ') || lines.some(l => l.includes('record '))) {
+                const recordCompMatch = /([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+)(,|\))/g;
+                let rMatch: RegExpExecArray | null;
+                while ((rMatch = recordCompMatch.exec(trimmed)) !== null) {
+                    const candidate = rMatch[2];
+                    if (candidate !== 'class' && candidate !== 'interface' && candidate !== 'record' && candidate !== 'implements' && candidate !== 'extends') {
+                        fieldNames.add(candidate);
+                    }
+                }
+            }
+        }
+
+        if (fieldNames.size === 0) {
+            return lines;
+        }
+
+        const output: string[] = [];
+        let braceDepth = 0;
+
+        for (const line of lines) {
+            let trimmed = line.trim();
+
+            const isFieldDeclaration = /(private|protected|public)\s+(final\s+)?([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+)\s*;/.test(trimmed);
+
+            if (trimmed.includes('{')) {
+                braceDepth++;
+            }
+
+            if (braceDepth >= 2 && !isFieldDeclaration && !trimmed.startsWith('//') && !trimmed.startsWith('/*') && !trimmed.startsWith('package') && !trimmed.startsWith('import')) {
+                for (const field of fieldNames) {
+                    const regex = new RegExp(`(?<![\\w.@])(?<!this\\.)\\b${field}\\b(?![\\w:(])`, 'g');
+                    trimmed = trimmed.replace(regex, `this.${field}`);
+                }
+            }
+
+            if (trimmed.startsWith('}')) {
+                braceDepth = Math.max(0, braceDepth - 1);
+            }
+
+            output.push(trimmed);
+        }
+
+        return output;
+    }
+
+    /**
+     * Rule 6: Method call/implementation with >1 arguments formatted on next line per argument.
+     */
+    private applyRule6MethodCalls(lines: string[]): string[] {
+        const output: string[] = [];
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+
+            const isMethodCall =
+                trimmed.includes('(') &&
+                trimmed.endsWith(');') &&
+                !trimmed.startsWith('public ') &&
+                !trimmed.startsWith('private ') &&
+                !trimmed.startsWith('protected ') &&
+                !trimmed.startsWith('class ') &&
+                !trimmed.startsWith('if ') &&
+                !trimmed.startsWith('for ') &&
+                !trimmed.startsWith('while ');
+
+            if (isMethodCall) {
+                const openParenIdx = trimmed.indexOf('(');
+                const closeParenIdx = trimmed.lastIndexOf(')');
+
+                if (openParenIdx !== -1 && closeParenIdx > openParenIdx) {
+                    const callPrefix = trimmed.slice(0, openParenIdx).trim();
+                    const argsContent = trimmed.slice(openParenIdx + 1, closeParenIdx).trim();
+                    const callSuffix = trimmed.slice(closeParenIdx + 1).trim();
+
+                    if (argsContent !== '') {
+                        const args = this.splitParameters(argsContent);
+                        if (args.length > 1) {
+                            output.push(`${callPrefix}(`);
+                            for (let aIdx = 0; aIdx < args.length; aIdx++) {
+                                const isLast = aIdx === args.length - 1;
+                                if (isLast) {
+                                    output.push(`${args[aIdx].trim()})${callSuffix}`);
+                                } else {
+                                    output.push(`${args[aIdx].trim()},`);
+                                }
+                            }
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            output.push(line);
+        }
+
+        return output;
+    }
+
+    /**
+     * Rule 8: On chaining objects, if an object or 'this' has 2 or more chained objects/methods,
+     * break each chained call (starting from second dot) onto next line including their dot.
+     */
+    private applyRule8ChainedCalls(lines: string[]): string[] {
+        const output: string[] = [];
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+
+            if (trimmed.startsWith('import ') || trimmed.startsWith('package ') || trimmed.startsWith('//') || trimmed.startsWith('/*')) {
+                output.push(line);
+                continue;
+            }
+
+            const dotMatches = trimmed.match(/\.[a-zA-Z0-9_]+\s*\(/g);
+            if (dotMatches && dotMatches.length >= 2) {
+                const firstDotIdx = trimmed.indexOf(dotMatches[0]);
+                const secondDotIdx = trimmed.indexOf(dotMatches[1], firstDotIdx + dotMatches[0].length);
+
+                if (secondDotIdx !== -1) {
+                    const firstPart = trimmed.slice(0, secondDotIdx).trim();
+                    const restPart = trimmed.slice(secondDotIdx).trim();
+
+                    output.push(firstPart);
+
+                    const subChainParts = restPart.split(/(?=\.[a-zA-Z0-9_]+)/g);
+                    for (const subPart of subChainParts) {
+                        if (subPart.trim() !== '') {
+                            output.push(subPart.trim());
+                        }
+                    }
+                    continue;
+                }
+            }
+
+            output.push(line);
+        }
+
+        return output;
+    }
+
+    /**
+     * Rule 7 & Rule 9: On assignment statements, right hand side of '=' can be on the next line.
+     */
+    private applyRule7AssignmentRhs(lines: string[]): string[] {
+        const output: string[] = [];
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+
+            const isAssignment =
+                trimmed.includes(' = ') &&
+                !trimmed.startsWith('for ') &&
+                !trimmed.startsWith('if ') &&
+                !trimmed.startsWith('while ') &&
+                !trimmed.endsWith('{') &&
+                trimmed.endsWith(';');
+
+            if (isAssignment) {
+                const eqIdx = trimmed.indexOf(' = ');
+                if (eqIdx !== -1) {
+                    const lhs = trimmed.slice(0, eqIdx + 2).trim();
+                    const rhs = trimmed.slice(eqIdx + 3).trim();
+
+                    if (line.length >= this.config.maxLineLength || rhs.length > 30) {
+                        output.push(lhs);
+                        output.push(`ASSIGN_RHS:${rhs}`);
+                        continue;
+                    }
+                }
+            }
+
+            output.push(line);
+        }
+
+        return output;
+    }
+
+    private splitParameters(paramsContent: string): string[] {
+        const result: string[] = [];
+        let current = '';
+        let depth = 0;
+
+        for (let i = 0; i < paramsContent.length; i++) {
+            const char = paramsContent[i];
+            if (char === '<' || char === '(' || char === '[') {
+                depth++;
+                current += char;
+            } else if (char === '>' || char === ')' || char === ']') {
+                depth = Math.max(0, depth - 1);
+                current += char;
+            } else if (char === ',' && depth === 0) {
+                result.push(current.trim());
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+
+        if (current.trim() !== '') {
+            result.push(current.trim());
+        }
+
+        return result;
     }
 
     private formatCodeLines(lines: string[]): string {
@@ -67,15 +490,21 @@ export class JavaFormatter {
         for (let i = 0; i < lines.length; i++) {
             let line = lines[i].trim();
 
-            // Empty lines
             if (line === '') {
                 outputLines.push('');
                 continue;
             }
 
-            const currentIndent = Math.max(0, blockIndent + parenIndent);
+            let isAssignRhs = false;
+            if (line.startsWith('ASSIGN_RHS:')) {
+                line = line.slice('ASSIGN_RHS:'.length).trim();
+                isAssignRhs = true;
+            }
 
-            // Javadoc and block comment handling
+            const isContinuationLine = isAssignRhs || line.startsWith('.') || line.startsWith('extends') || line.startsWith('implements') || line.startsWith('throws');
+            const extraIndent = isContinuationLine ? 2 : 0;
+            const currentIndent = Math.max(0, blockIndent + parenIndent + extraIndent);
+
             if (line.startsWith('/**')) {
                 inJavadoc = true;
                 outputLines.push(indentStr.repeat(currentIndent) + line);
@@ -104,13 +533,11 @@ export class JavaFormatter {
                 continue;
             }
 
-            // Single line comments
             if (line.startsWith('//')) {
                 outputLines.push(indentStr.repeat(currentIndent) + line);
                 continue;
             }
 
-            // Adjust indent for closing symbols at line start
             const startsWithClosingBrace = line.startsWith('}');
             if (startsWithClosingBrace) {
                 blockIndent = Math.max(0, blockIndent - 1);
@@ -120,11 +547,10 @@ export class JavaFormatter {
                 parenIndent = Math.max(0, parenIndent - 2);
             }
 
-            // Handle brace style option (nextLine vs sameLine)
             if (this.config.braceStyle === 'nextLine' && line.endsWith('{') && line.length > 1 && !line.startsWith('class ') && !line.startsWith('interface ')) {
                 const codeWithoutBrace = line.slice(0, -1).trim();
                 if (codeWithoutBrace.length > 0) {
-                    const lineIndent = Math.max(0, blockIndent + parenIndent);
+                    const lineIndent = Math.max(0, blockIndent + parenIndent + extraIndent);
                     outputLines.push(indentStr.repeat(lineIndent) + codeWithoutBrace);
                     outputLines.push(indentStr.repeat(lineIndent) + '{');
                     blockIndent++;
@@ -132,38 +558,20 @@ export class JavaFormatter {
                 }
             }
 
-            // Format control flow statements: space after if, for, while, switch, catch
             line = this.normalizeControlFlowSpaces(line);
-
-            // Format comparison operators: spaces around ==, !=, <=, >=
             line = this.normalizeOperatorSpaces(line);
-
-            // Format commas: space after comma
             line = this.normalizeCommaSpaces(line);
-
-            // Format opening braces: space before {
             line = this.normalizeBraceSpaces(line);
-
-            // Format annotation styling
             line = this.normalizeAnnotationSpaces(line);
 
-            // Output current formatted line
-            const lineIndentLevel = Math.max(0, blockIndent + parenIndent);
+            const lineIndentLevel = Math.max(0, blockIndent + parenIndent + extraIndent);
             const currentLineIndent = indentStr.repeat(lineIndentLevel);
             const fullLine = currentLineIndent + line;
 
-            // Line length wrapping check
-            if (fullLine.length > this.config.maxLineLength && !line.startsWith('package ') && !line.startsWith('import ')) {
-                const wrapped = this.wrapLongLine(line, lineIndentLevel, indentStr);
-                outputLines.push(...wrapped);
-            } else {
-                outputLines.push(fullLine);
-            }
+            outputLines.push(fullLine);
 
-            // Strip string literals to safely count structure tokens
             const codeWithoutStrings = line.replace(/"([^"\\]|\\.)*"/g, '""').replace(/'([^'\\]|\\.)*'/g, "''");
 
-            // Character by character token scanner for net indent updates
             for (let chIdx = 0; chIdx < codeWithoutStrings.length; chIdx++) {
                 const char = codeWithoutStrings[chIdx];
                 if (char === '{') {
@@ -173,7 +581,7 @@ export class JavaFormatter {
                         blockIndent = Math.max(0, blockIndent - 1);
                     }
                 } else if (char === '(' || char === '[') {
-                    parenIndent += 2; // 2x continuation indent (4 spaces) for record parameters / arguments
+                    parenIndent += 2;
                 } else if (char === ')' || char === ']') {
                     if (!startsWithClosingParen) {
                         parenIndent = Math.max(0, parenIndent - 2);
@@ -199,7 +607,6 @@ export class JavaFormatter {
     }
 
     private normalizeAnnotationSpaces(line: string): string {
-        // e.g. @Override @Autowired @Table(name="users")
         return line.replace(/@([a-zA-Z0-9_]+)\s*\(\s*/g, '@$1(');
     }
 
@@ -217,24 +624,6 @@ export class JavaFormatter {
 
     private normalizeBraceSpaces(line: string): string {
         return line.replace(/([a-zA-Z0-9_\>\]\)])\{/g, '$1 {');
-    }
-
-    private wrapLongLine(line: string, indentLevel: number, indentStr: string): string[] {
-        // Simple intelligent split at commas, method call chains, or binary operators
-        const baseIndent = indentStr.repeat(indentLevel);
-        const continuationIndent = indentStr.repeat(indentLevel + 1);
-
-        if (line.includes(', ') && !line.startsWith('@')) {
-            const parts = line.split(', ');
-            const lines: string[] = [baseIndent + parts[0] + ','];
-            for (let i = 1; i < parts.length; i++) {
-                const isLast = i === parts.length - 1;
-                lines.push(continuationIndent + parts[i] + (isLast ? '' : ','));
-            }
-            return lines;
-        }
-
-        return [baseIndent + line];
     }
 
     private postProcessBlankLines(lines: string[]): string[] {
