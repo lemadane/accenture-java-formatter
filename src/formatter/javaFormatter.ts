@@ -64,6 +64,9 @@ export class JavaFormatter {
         // Rule 3 & Rule 4: final keyword & multiline method/constructor parameters (>1)
         result = this.applyRule3And4MethodParams(result);
 
+        // Rule 7 & Rule 9: Assignment statement RHS split (run before method call split to mark assignment continuation)
+        result = this.applyRule7AssignmentRhs(result);
+
         // Rule 2: this. prefix on class fields inside implementations (protecting parameters & locals)
         result = this.applyRule2ThisPrefix(result);
 
@@ -72,9 +75,6 @@ export class JavaFormatter {
 
         // Rule 8: Object chaining >= 2 dots
         result = this.applyRule8ChainedCalls(result);
-
-        // Rule 7 & Rule 9: Assignment statement RHS split
-        result = this.applyRule7AssignmentRhs(result);
 
         return result;
     }
@@ -264,7 +264,10 @@ export class JavaFormatter {
 
         // 1. Collect class field declarations and record components
         for (const line of lines) {
-            const trimmed = line.trim();
+            let trimmed = line.trim();
+            if (trimmed.startsWith('ASSIGN_RHS:')) {
+                trimmed = trimmed.slice('ASSIGN_RHS:'.length).trim();
+            }
             const fieldMatch = /(private|protected|public)\s+(final\s+)?([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+)\s*;/g.exec(trimmed);
             if (fieldMatch) {
                 fieldNames.add(fieldMatch[4]);
@@ -293,6 +296,11 @@ export class JavaFormatter {
         for (let i = 0; i < lines.length; i++) {
             let line = lines[i];
             let trimmed = line.trim();
+            let prefixMarker = '';
+            if (trimmed.startsWith('ASSIGN_RHS:')) {
+                prefixMarker = 'ASSIGN_RHS:';
+                trimmed = trimmed.slice('ASSIGN_RHS:'.length).trim();
+            }
 
             const isFieldDeclaration = /(private|protected|public)\s+(final\s+)?([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+)\s*;/.test(trimmed);
             const isMethodHeader = trimmed.includes('(') && (trimmed.endsWith('{') || trimmed.endsWith(')'));
@@ -320,11 +328,9 @@ export class JavaFormatter {
                 braceDepth++;
             }
 
-            // Only apply this. prefixing inside method body (braceDepth >= 2)
-            // Exclude field declarations, method headers, and parameter declaration lines
+            // Only apply this. prefix inside method body (braceDepth >= 2)
             if (braceDepth >= 2 && !isFieldDeclaration && !isMethodHeader && !isParameterLine && !trimmed.startsWith('//') && !trimmed.startsWith('/*') && !trimmed.startsWith('package') && !trimmed.startsWith('import')) {
                 for (const field of fieldNames) {
-                    // Do NOT prefix if the identifier is shadowed by a local method parameter or local variable
                     if (methodParamNames.has(field) || localVariableNames.has(field)) {
                         continue;
                     }
@@ -341,7 +347,7 @@ export class JavaFormatter {
                 }
             }
 
-            output.push(trimmed);
+            output.push(prefixMarker + trimmed);
         }
 
         return output;
@@ -354,11 +360,16 @@ export class JavaFormatter {
         const output: string[] = [];
 
         for (const line of lines) {
-            const trimmed = line.trim();
+            let trimmed = line.trim();
+            let isRhs = false;
+            if (trimmed.startsWith('ASSIGN_RHS:')) {
+                isRhs = true;
+                trimmed = trimmed.slice('ASSIGN_RHS:'.length).trim();
+            }
 
             const isMethodCall =
                 trimmed.includes('(') &&
-                trimmed.endsWith(');') &&
+                (trimmed.endsWith(');') || trimmed.endsWith(')')) &&
                 !trimmed.startsWith('public ') &&
                 !trimmed.startsWith('private ') &&
                 !trimmed.startsWith('protected ') &&
@@ -379,7 +390,8 @@ export class JavaFormatter {
                     if (argsContent !== '') {
                         const args = this.splitParameters(argsContent);
                         if (args.length > 1) {
-                            output.push(`${callPrefix}(`);
+                            const prefix = isRhs ? `ASSIGN_RHS:${callPrefix}` : callPrefix;
+                            output.push(`${prefix}(`);
                             for (let aIdx = 0; aIdx < args.length; aIdx++) {
                                 const isLast = aIdx === args.length - 1;
                                 if (isLast) {
@@ -394,7 +406,7 @@ export class JavaFormatter {
                 }
             }
 
-            output.push(line);
+            output.push(isRhs ? `ASSIGN_RHS:${trimmed}` : line);
         }
 
         return output;
@@ -408,7 +420,12 @@ export class JavaFormatter {
         const output: string[] = [];
 
         for (const line of lines) {
-            const trimmed = line.trim();
+            let trimmed = line.trim();
+            let isRhs = false;
+            if (trimmed.startsWith('ASSIGN_RHS:')) {
+                isRhs = true;
+                trimmed = trimmed.slice('ASSIGN_RHS:'.length).trim();
+            }
 
             if (trimmed.startsWith('import ') || trimmed.startsWith('package ') || trimmed.startsWith('//') || trimmed.startsWith('/*')) {
                 output.push(line);
@@ -424,7 +441,7 @@ export class JavaFormatter {
                     const firstPart = trimmed.slice(0, secondDotIdx).trim();
                     const restPart = trimmed.slice(secondDotIdx).trim();
 
-                    output.push(firstPart);
+                    output.push(isRhs ? `ASSIGN_RHS:${firstPart}` : firstPart);
 
                     const subChainParts = restPart.split(/(?=\.[a-zA-Z0-9_]+)/g);
                     for (const subPart of subChainParts) {
@@ -436,7 +453,7 @@ export class JavaFormatter {
                 }
             }
 
-            output.push(line);
+            output.push(isRhs ? `ASSIGN_RHS:${trimmed}` : line);
         }
 
         return output;
@@ -456,8 +473,7 @@ export class JavaFormatter {
                 !trimmed.startsWith('for ') &&
                 !trimmed.startsWith('if ') &&
                 !trimmed.startsWith('while ') &&
-                !trimmed.endsWith('{') &&
-                trimmed.endsWith(';');
+                !trimmed.endsWith('{');
 
             if (isAssignment) {
                 const eqIdx = trimmed.indexOf(' = ');
@@ -465,7 +481,7 @@ export class JavaFormatter {
                     const lhs = trimmed.slice(0, eqIdx + 2).trim();
                     const rhs = trimmed.slice(eqIdx + 3).trim();
 
-                    if (line.length >= this.config.maxLineLength || rhs.length > 30) {
+                    if (line.length >= this.config.maxLineLength || rhs.length > 15 || rhs.includes('(')) {
                         output.push(lhs);
                         output.push(`ASSIGN_RHS:${rhs}`);
                         continue;
