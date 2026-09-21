@@ -393,6 +393,142 @@ describe('Accenture Java Formatter E2E Test Suite (Rules 1-10)', () => {
         assert.ok(text.includes('\n    final var location = URI.create("/api/products/" + product.id());\n'), 'Single line assignment under 80 chars stays on single line with 4 spaces');
     });
 
+    it('E2E Assignment Bug 1: Missing space after equal sign must be normalized', async () => {
+        const inputCode = [
+            'package com.accenture.test;',
+            'public class TestClass {',
+            '  public void test() {',
+            '    final var product =productService.create(request);',
+            '  }',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, inputCode);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
+
+        assert.ok(text.includes('    final var product = productService.create(request);'), 'Missing space after = must be normalized to = ');
+    });
+
+    it('E2E Assignment Bug 2: Missing space before equal sign must be normalized', async () => {
+        const inputCode = [
+            'package com.accenture.test;',
+            'public class TestClass {',
+            '  public void test() {',
+            '    final var location= URI.create("/api/products");',
+            '  }',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, inputCode);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
+
+        assert.ok(text.includes('    final var location = URI.create("/api/products");'), 'Missing space before = must be normalized to = ');
+    });
+
+    it('E2E Assignment Bug 3: Equal sign and RHS starting on next line must be 2x indented (4 spaces)', async () => {
+        const inputCode = [
+            'package com.accenture.test;',
+            'public class TestClass {',
+            '  public void test() {',
+            '    final var product',
+            '= productService.create(',
+            '        request);',
+            '  }',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, inputCode);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
+
+        assert.ok(text.includes('    final var product\n        = productService.create('), 'Equal sign and RHS starting on next line must be 2x indented (8 spaces total)');
+    });
+
+    it('E2E Assignment Bug 4: Equal sign at end of line 1 with RHS on line 2 must be preserved with 2x indentation', async () => {
+        const inputCode = [
+            'package com.accenture.test;',
+            'public class TestClass {',
+            '  public void test() {',
+            '    final var product =',
+            '        productService.create(',
+            '            request);',
+            '  }',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, inputCode);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
+
+        assert.ok(text.includes('    final var product =\n        productService.create(\n            request);'), 'Equal sign on line 1 with RHS on line 2 must be preserved with 2x indentation');
+    });
+
+    it('E2E SQL String Bug: SQL queries containing equal sign must not be treated as Java assignment statements', async () => {
+        const inputCode = [
+            'package com.accenture.test;',
+            'public class SqlQueryTest {',
+            '  public void executeQuery() {',
+            '    String sql = "select * from table a where size = 10 limit 5";',
+            '    jdbcTemplate.query("select * from table a where size = 10 limit 5", rowMapper);',
+            '  }',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, inputCode);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
+
+        assert.ok(text.includes('    String sql = "select * from table a where size = 10 limit 5";'), 'SQL string literal in assignment must not be broken up at inner equal sign');
+        assert.ok(text.includes('        "select * from table a where size = 10 limit 5",'), 'SQL string inside method call must remain complete and unbroken');
+    });
+
+    it('E2E Annotation Arguments: Annotations with >1 arguments must format multiline (1 per line)', async () => {
+        const inputCode = [
+            'package com.accenture.test;',
+            '@Table(name = "users", schema = "public")',
+            'public class User {',
+            '  @Column(name = "id", nullable = false, unique = true)',
+            '  private Long id;',
+            '  @Table(name = "single_arg")',
+            '  private String name;',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, inputCode);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
+
+        assert.ok(text.includes('@Table(\n    name = "users",\n    schema = "public")'), 'Annotation with 2 arguments must be formatted multiline');
+        assert.ok(text.includes('  @Column(\n      name = "id",\n      nullable = false,\n      unique = true)'), 'Field annotation with 3 arguments must be formatted multiline');
+        assert.ok(text.includes('  @Table(name = "single_arg")'), 'Annotation with 1 argument must remain on single line');
+    });
+
     it('E2E Rule 10: Automatic formatting is triggered on document save', async () => {
         const unformattedCode = [
             'package com.accenture.test;',

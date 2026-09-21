@@ -4,7 +4,11 @@
 
 > Enterprise-grade Java Code Formatter for Visual Studio Code, modeled after **Language Support for Java(TM) by Red Hat** (`redhat.java`).
 
-The **Accenture Java Formatter** brings standardized Java code formatting, Eclipse JDT XML profile compatibility, intelligent import organization, and configurable code styles directly to Visual Studio Code.
+> [!IMPORTANT]
+> **🧪 Beta Test Release**: This extension is currently under active **Beta Testing**. Features and formatting rules undergo continuous testing and validation. Feedback and issue reports are welcome!
+
+The **Accenture Java Formatter** brings standardized Java code formatting, 2x continuation indentation, Eclipse JDT XML profile compatibility, intelligent import organization, and configurable code styles directly to Visual Studio Code.
+
 
 ---
 
@@ -15,7 +19,7 @@ The **Accenture Java Formatter** brings standardized Java code formatting, Eclip
 Execute the following command in your terminal:
 
 ```bash
-code --install-extension /home/lem/Projects/vscode-java-formatter/accenture-java-formatter-1.0.0.vsix
+code --install-extension /home/lem/Projects/vscode-java-formatter/accenture-java-formatter-0.9.2.vsix
 ```
 
 ### Option 2: Via VS Code GUI 🖥️
@@ -24,7 +28,9 @@ code --install-extension /home/lem/Projects/vscode-java-formatter/accenture-java
 2. Open the **Extensions** side bar (`Ctrl+Shift+X` or `Cmd+Shift+X`).
 3. Click the **`...` (Views and More Actions)** menu icon at the top right of the Extensions panel.
 4. Select **Install from VSIX...**.
-5. Browse to `/home/lem/Projects/vscode-java-formatter/` and select `accenture-java-formatter-1.0.0.vsix`.
+5. Browse to `/home/lem/Projects/vscode-java-formatter/` and select `accenture-java-formatter-0.9.2.vsix`.
+
+
 6. Click **Install**.
 
 ### Option 3: Run from Source Code (Development / Debug Mode) 🛠️
@@ -35,19 +41,18 @@ code --install-extension /home/lem/Projects/vscode-java-formatter/accenture-java
 
 ---
 
-## 🌟 Key Features
+## 🌟 Standard Accenture Formatting Rules
 
-- 🎨 **Enterprise Java Formatting**: Formats classes, records, interfaces, enums, annotations (`@Entity`, `@Autowired`, `@Override`), control flows (`if/else`, `try/catch`, `switch`, `for`), lambdas, and Javadoc comments.
-- 📐 **2-Space Default Indentation**: Pre-configured with clean 2-space indentation standards out of the box.
-- 🔄 **Format on Code Change**: Automatically formats Java code as you type (with debounced performance protection).
-- 📦 **Smart Import Organization**: Grouping and sorting of static, `java.*`, `javax.*/jakarta.*`, `org.*`, `com.*`, and `com.accenture.*` imports with automatic deduplication.
-- ⚙️ **Eclipse JDT XML Profile Support**: Import custom Eclipse JDT XML formatting profiles (`accentureJava.format.settings.url`).
-- 🎛️ **Pre-configured Style Presets**: Switch instantly between style profiles:
-  - **Accenture Standard** (2 spaces, K&R braces, 120-char line limit, Accenture import grouping)
-  - **Google Java Style** (2 spaces, strict Google Java style rules)
-  - **Eclipse Default** (4-space tabs, Eclipse default conventions)
-  - **Spring Framework Style** (4 spaces, Spring conventions)
-- 📊 **Status Bar Indicator**: View and switch active formatting style profile directly from the status bar.
+| Rule | Description | Code Example |
+| :--- | :--- | :--- |
+| **Rule 1** | Any annotation sits on its own dedicated line (preserving method header prefixes). | `@PostMapping`<br>`@Validated`<br>`public ResponseEntity<ProductResponse> create(` |
+| **Rule 4** | Method and constructor declarations with $>1$ argument formatted 1 per line. | `public int add(`<br>`    int a,`<br>`    int b) {` |
+| **Rule 5** | `extends`, `implements`, `throws` sit on dedicated next lines together with associated types. | `public class CustomController`<br>`    extends BaseController`<br>`    implements ControllerInterface {` |
+| **Rule 6** | Method calls with $>1$ argument formatted multiline (1 per line). | `service.pay(`<br>`    id,`<br>`    amount);` |
+| **Rule 7** | Assignment RHS indented 2x (+4 spaces) when on next line & spaces around `=` normalized (`location = URI`). | `final var product =`<br>`    this.productService.create(request);`<br>`final var product`<br>`    = productService.create(request);` |
+| **Rule 8** | Chained method calls ($\ge 2$ dots) split from 2nd dot, and lambda chained calls indented 2x (+4 spaces). | `return this.productService.getById(id)`<br>`    .map(ResponseEntity::ok)`<br>`    .orElseGet(() -> ResponseEntity`<br>`        .notFound()`<br>`        .build());` |
+| **Rule 9** | 80-column line limit wraps assignment RHS or method arguments onto next line. | `maxLineLength: 80` |
+| **Rule 10** | Automatic formatting triggered on document save. | `onSave: true`, `formatOnChange: false` |
 
 ---
 
@@ -61,11 +66,11 @@ Configure options in `.vscode/settings.json` or the VS Code Settings UI:
   "accentureJava.format.preset": "Accenture Standard",
   "accentureJava.format.tabSize": 2,
   "accentureJava.format.insertSpaces": true,
-  "accentureJava.format.maxLineLength": 120,
+  "accentureJava.format.maxLineLength": 80,
   "accentureJava.format.comments.enabled": true,
   "accentureJava.format.imports.organizeOnFormat": true,
-  "accentureJava.format.formatOnChange": true,
-  "accentureJava.format.onSave": false,
+  "accentureJava.format.formatOnChange": false,
+  "accentureJava.format.onSave": true,
   "accentureJava.format.settings.url": ".vscode/accenture-java-formatter.xml"
 }
 ```
@@ -79,37 +84,23 @@ Configure options in `.vscode/settings.json` or the VS Code Settings UI:
 | **Accenture Java Formatter: Format Document** | `accentureJava.format.document` | Formats active Java file |
 | **Accenture Java Formatter: Format Selection** | `accentureJava.format.selection` | Formats selected Java code |
 | **Accenture Java Formatter: Organize Imports** | `accentureJava.format.organizeImports` | Cleans up & sorts Java imports |
-| **Accenture Java Formatter: Select Formatting Profile** | `accentureJava.format.selectProfile` | Interactive quick-pick style profile menu |
+| **Accenture Java Formatter: Select Formatting Profile** | `accentureJava.format.selectProfile` | Quick-pick style profile menu |
 | **Accenture Java Formatter: Export Default Accenture XML Config** | `accentureJava.format.exportConfig` | Generates `.vscode/accenture-java-formatter.xml` profile |
 
 ---
 
-## 🛠️ Building & Packaging (.vsix)
+## 🛠️ Testing, Building & Packaging (.vsix)
 
 ```bash
 # 1. Compile TypeScript
 npm run compile
 
-# 2. Execute E2E & Unit Test Suite
+# 2. Execute 27-Test E2E & Unit Suite (2-State Testing Verified)
 npm test
 
 # 3. Package extension into .vsix installer
 npm run package
 ```
-
----
-
-## 🌿 Version Control
-
-This repository is initialized with **Git** version control.
-
-```bash
-# Check version history and status
-git log --oneline
-```
-
-### Version History
-- **`v1.0.0`**: Initial release featuring Red Hat Java compatible architecture, Eclipse JDT XML profile loader, 2-space default indentation, format-on-change support, and unit/E2E test suite.
 
 ---
 

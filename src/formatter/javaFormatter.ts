@@ -496,33 +496,33 @@ export class JavaFormatter {
             trimmed = this.normalizeAssignmentSpaces(trimmed);
             trimmed = this.normalizeParenSpaces(trimmed);
 
+            const codeWithoutStrings = trimmed.replace(/"([^"\\]|\\.)*"/g, '""').replace(/'([^'\\]|\\.)*'/g, "''");
+            const eqIdx = this.findAssignmentOperatorIndex(trimmed);
+
             const isAssignment =
-                trimmed.includes(' = ') &&
-                !trimmed.startsWith('for ') &&
-                !trimmed.startsWith('if ') &&
-                !trimmed.startsWith('while ') &&
-                !trimmed.endsWith('{');
+                eqIdx !== -1 &&
+                !codeWithoutStrings.startsWith('for ') &&
+                !codeWithoutStrings.startsWith('if ') &&
+                !codeWithoutStrings.startsWith('while ') &&
+                !codeWithoutStrings.endsWith('{');
 
             if (isAssignment) {
-                const eqIdx = trimmed.indexOf(' = ');
-                if (eqIdx !== -1) {
-                    const lhs = trimmed.slice(0, eqIdx + 2).trim();
-                    const rhs = trimmed.slice(eqIdx + 3).trim();
+                const lhs = trimmed.slice(0, eqIdx + 2).trim();
+                const rhs = trimmed.slice(eqIdx + 3).trim();
 
-                    if (line.length >= this.config.maxLineLength) {
-                        output.push(lhs);
-                        output.push(`ASSIGN_RHS:${rhs}`);
-                        continue;
-                    }
+                if (line.length >= this.config.maxLineLength) {
+                    output.push(lhs);
+                    output.push(`ASSIGN_RHS:${rhs}`);
+                    continue;
                 }
             }
 
             const isLineEndingWithEquals =
-                (trimmed.endsWith(' =') || trimmed.endsWith('=')) &&
-                !trimmed.startsWith('for ') &&
-                !trimmed.startsWith('if ') &&
-                !trimmed.startsWith('while ') &&
-                !trimmed.endsWith('{');
+                (codeWithoutStrings.endsWith(' =') || codeWithoutStrings.endsWith('=')) &&
+                !codeWithoutStrings.startsWith('for ') &&
+                !codeWithoutStrings.startsWith('if ') &&
+                !codeWithoutStrings.startsWith('while ') &&
+                !codeWithoutStrings.endsWith('{');
 
             if (isLineEndingWithEquals) {
                 output.push(trimmed);
@@ -534,6 +534,30 @@ export class JavaFormatter {
         }
 
         return output;
+    }
+
+    private findAssignmentOperatorIndex(line: string): number {
+        let inString = false;
+        let stringChar = '';
+
+        for (let i = 0; i < line.length - 2; i++) {
+            const char = line[i];
+            if (inString) {
+                if (char === stringChar && line[i - 1] !== '\\') {
+                    inString = false;
+                }
+                continue;
+            }
+            if (char === '"' || char === "'") {
+                inString = true;
+                stringChar = char;
+                continue;
+            }
+            if (line.slice(i, i + 3) === ' = ') {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private splitParameters(paramsContent: string): string[] {
@@ -602,7 +626,7 @@ export class JavaFormatter {
             }
 
             const parenIndent = parenIndentStack.length > 0 ? parenIndentStack[parenIndentStack.length - 1] : 0;
-            const isContinuationLine = isAssignRhs || line.startsWith('.') || line.startsWith('extends') || line.startsWith('implements') || line.startsWith('throws');
+            const isContinuationLine = isAssignRhs || line.startsWith('=') || line.startsWith('.') || line.startsWith('extends') || line.startsWith('implements') || line.startsWith('throws');
             const extraIndent = isContinuationLine ? 2 : 0;
             const lineIndentLevel = Math.max(0, blockIndent + parenIndent + extraIndent);
 
@@ -707,10 +731,28 @@ export class JavaFormatter {
     }
 
     private normalizeAssignmentSpaces(line: string): string {
-        if (line.includes('==') || line.includes('!=') || line.includes('<=') || line.includes('>=') || line.includes('->')) {
-            return line;
+        const parts: string[] = [];
+        const regex = /("([^"\\]|\\.)*"|'([^'\\]|\\.)*')/g;
+        let lastIdx = 0;
+        let match: RegExpExecArray | null;
+
+        while ((match = regex.exec(line)) !== null) {
+            const codeBefore = line.slice(lastIdx, match.index);
+            parts.push(this.fixAssignmentOperatorSpaces(codeBefore));
+            parts.push(match[0]);
+            lastIdx = match.index + match[0].length;
         }
-        return line.replace(/([a-zA-Z0-9_\>\]\)])=([a-zA-Z0-9_\<\(\"\@])/g, '$1 = $2');
+
+        const codeRest = line.slice(lastIdx);
+        parts.push(this.fixAssignmentOperatorSpaces(codeRest));
+
+        return parts.join('');
+    }
+
+    private fixAssignmentOperatorSpaces(code: string): string {
+        let res = code.replace(/([^!\+\-\*\/\%\|\&\^\=\<\>\s])=(?!=)/g, '$1 =');
+        res = res.replace(/(?<![!\+\-\*\/\%\|\&\^\=\<\>])=([^=\s])/g, '= $1');
+        return res;
     }
 
     private normalizeParenSpaces(line: string): string {
