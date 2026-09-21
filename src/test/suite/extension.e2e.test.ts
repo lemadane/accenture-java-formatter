@@ -41,13 +41,15 @@ describe('Accenture Java Formatter E2E Test Suite (Rules 1-10)', () => {
         assert.ok(text.includes('  @Override\n  public void execute() {}'));
     });
 
-    it('E2E Rule 2: All fields must include this. prefix on implementations throughout class code', async () => {
+    it('E2E Rule 2: All fields must include this. prefix on implementations throughout class code, protecting parameters', async () => {
         const inputCode = [
-            'package com.accenture.test;',
-            'public class Employee {',
-            '  private String deptId;',
-            '  public String getDept() {',
-            '    return deptId;',
+            'package com.accenture.controller;',
+            'public class ProductController {',
+            '  private ProductService productService;',
+            '  @PostMapping',
+            '  public ResponseEntity<ProductResponse> create(@RequestBody CreateProductRequest request) {',
+            '    final var product = productService.create(request);',
+            '    return ResponseEntity.ok(product);',
             '  }',
             '}'
         ].join('\n');
@@ -60,7 +62,8 @@ describe('Accenture Java Formatter E2E Test Suite (Rules 1-10)', () => {
         await vscode.commands.executeCommand('accentureJava.format.document');
         const text = testDoc.getText();
 
-        assert.ok(text.includes('return this.deptId;'));
+        assert.ok(!text.includes('this.request'), 'Method parameter request must NOT receive this. prefix');
+        assert.ok(text.includes('this.productService.create(request);'), 'Class field productService must receive this. prefix');
     });
 
     it('E2E Rule 3: Method and constructor declarations arguments must include final keyword', async () => {

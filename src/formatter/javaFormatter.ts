@@ -64,7 +64,7 @@ export class JavaFormatter {
         // Rule 3 & Rule 4: final keyword & multiline method/constructor parameters (>1)
         result = this.applyRule3And4MethodParams(result);
 
-        // Rule 2: this. prefix on class fields inside implementations
+        // Rule 2: this. prefix on class fields inside implementations (protecting parameters & locals)
         result = this.applyRule2ThisPrefix(result);
 
         // Rule 6: Method calls with >1 argument multiline
@@ -186,7 +186,6 @@ export class JavaFormatter {
             const line = lines[i];
             const trimmed = line.trim();
 
-            // Match method/constructor declarations: public/protected/private or type identifier(...) {
             const isMethodOrConstructor =
                 trimmed.includes('(') &&
                 (trimmed.endsWith('{') || (trimmed.endsWith(');') && (trimmed.startsWith('public') || trimmed.startsWith('protected') || trimmed.startsWith('private') || trimmed.startsWith('abstract')))) &&
@@ -258,10 +257,12 @@ export class JavaFormatter {
 
     /**
      * Rule 2: Include 'this.' on field implementations throughout class/record methods.
+     * Accurately distinguishes class fields from method parameters and local variables.
      */
     private applyRule2ThisPrefix(lines: string[]): string[] {
         const fieldNames = new Set<string>();
 
+        // 1. Collect class field declarations and record components
         for (const line of lines) {
             const trimmed = line.trim();
             const fieldMatch = /(private|protected|public)\s+(final\s+)?([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+)\s*;/g.exec(trimmed);
@@ -286,18 +287,47 @@ export class JavaFormatter {
 
         const output: string[] = [];
         let braceDepth = 0;
+        let methodParamNames = new Set<string>();
+        let localVariableNames = new Set<string>();
 
-        for (const line of lines) {
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i];
             let trimmed = line.trim();
 
             const isFieldDeclaration = /(private|protected|public)\s+(final\s+)?([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+)\s*;/.test(trimmed);
+            const isMethodHeader = trimmed.includes('(') && (trimmed.endsWith('{') || trimmed.endsWith(')'));
+            const isParameterLine = (trimmed.startsWith('final ') || trimmed.startsWith('@')) && (trimmed.endsWith(',') || trimmed.endsWith(') {') || trimmed.endsWith(')'));
+
+            // Track method parameters in method declarations
+            if (isMethodHeader || isParameterLine) {
+                const paramMatch = /(?:final\s+)?([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+)(?:,|\)|\s*\{)/g;
+                let pMatch: RegExpExecArray | null;
+                while ((pMatch = paramMatch.exec(trimmed)) !== null) {
+                    const paramName = pMatch[2];
+                    if (paramName !== 'class' && paramName !== 'interface' && paramName !== 'record' && paramName !== 'public' && paramName !== 'private') {
+                        methodParamNames.add(paramName);
+                    }
+                }
+            }
+
+            // Track local variable declarations inside methods (e.g. final var product = ...)
+            const localVarMatch = /(?:final\s+)?(?:var|[A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+)\s*=/g.exec(trimmed);
+            if (localVarMatch && braceDepth >= 2) {
+                localVariableNames.add(localVarMatch[1]);
+            }
 
             if (trimmed.includes('{')) {
                 braceDepth++;
             }
 
-            if (braceDepth >= 2 && !isFieldDeclaration && !trimmed.startsWith('//') && !trimmed.startsWith('/*') && !trimmed.startsWith('package') && !trimmed.startsWith('import')) {
+            // Only apply this. prefixing inside method body (braceDepth >= 2)
+            // Exclude field declarations, method headers, and parameter declaration lines
+            if (braceDepth >= 2 && !isFieldDeclaration && !isMethodHeader && !isParameterLine && !trimmed.startsWith('//') && !trimmed.startsWith('/*') && !trimmed.startsWith('package') && !trimmed.startsWith('import')) {
                 for (const field of fieldNames) {
+                    // Do NOT prefix if the identifier is shadowed by a local method parameter or local variable
+                    if (methodParamNames.has(field) || localVariableNames.has(field)) {
+                        continue;
+                    }
                     const regex = new RegExp(`(?<![\\w.@])(?<!this\\.)\\b${field}\\b(?![\\w:(])`, 'g');
                     trimmed = trimmed.replace(regex, `this.${field}`);
                 }
@@ -305,6 +335,10 @@ export class JavaFormatter {
 
             if (trimmed.startsWith('}')) {
                 braceDepth = Math.max(0, braceDepth - 1);
+                if (braceDepth <= 1) {
+                    methodParamNames.clear();
+                    localVariableNames.clear();
+                }
             }
 
             output.push(trimmed);
