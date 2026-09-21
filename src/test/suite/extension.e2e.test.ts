@@ -215,6 +215,35 @@ describe('Accenture Java Formatter E2E Test Suite (Rules 1-10)', () => {
         assert.ok(text.includes('String orderDescriptionMessageHeader ='));
     });
 
+    it('E2E Rule 8 & Argument Indentation: Multiline arguments inside .map and .orElseGet chained calls must be 2x indented', async () => {
+        const inputCode = [
+            'package com.accenture.controller;',
+            'public class ProductController {',
+            '  public Object getProduct(final UUID id) {',
+            '    return this.productService.getById(id)',
+            '      .map(',
+            '  ResponseEntity::ok)',
+            '      .orElseGet(',
+            '  () -> ResponseEntity.notFound()',
+            '      .build());',
+            '  }',
+            '}'
+        ].join('\n');
+
+        await testEditor.edit(editBuilder => {
+            const fullRange = new vscode.Range(0, 0, testDoc.lineCount, 0);
+            editBuilder.replace(fullRange, inputCode);
+        });
+
+        await vscode.commands.executeCommand('accentureJava.format.document');
+        const text = testDoc.getText();
+
+        assert.ok(text.includes('      .map('));
+        assert.ok(text.includes('        ResponseEntity::ok)'));
+        assert.ok(text.includes('      .orElseGet('));
+        assert.ok(text.includes('        () -> ResponseEntity.notFound()'));
+    });
+
     it('E2E Rule 10: Automatic formatting is triggered on document save', async () => {
         const unformattedCode = [
             'package com.accenture.test;',

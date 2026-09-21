@@ -104,6 +104,30 @@ describe('Accenture Java Formatter Test Suite', () => {
         assert.ok(xml.includes('org.eclipse.jdt.core.formatter.lineSplit'));
     });
 
+    it('JavaFormatter should properly indent multiline arguments inside .map and .orElseGet method calls', () => {
+        const code = [
+            'package com.accenture.test;',
+            'public class ProductService {',
+            '  public Object getProduct(final UUID id) {',
+            '    return this.productService.getById(id)',
+            '      .map(',
+            '        ResponseEntity::ok)',
+            '      .orElseGet(',
+            '        () -> ResponseEntity.notFound()',
+            '          .build());',
+            '  }',
+            '}'
+        ].join('\n');
+
+        const formatter = new JavaFormatter(ACCENTURE_DEFAULT_CONFIG);
+        const formatted = formatter.formatDocument(code);
+
+        assert.ok(formatted.includes('      .map('));
+        assert.ok(formatted.includes('        ResponseEntity::ok)'));
+        assert.ok(formatted.includes('      .orElseGet('));
+        assert.ok(formatted.includes('        () -> ResponseEntity.notFound()'));
+    });
+
     it('parseEclipseXmlConfig should extract indentation and line length settings', () => {
         const tempXmlPath = path.join(__dirname, 'test-formatter.xml');
         fs.writeFileSync(tempXmlPath, generateAccentureXmlConfig(), 'utf8');
