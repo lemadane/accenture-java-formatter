@@ -56,4 +56,3 @@ lerna-debug.log*
 
 /vscode/.vscode-test/
 /vscode/.vscode-test.mjs
-/vscode/*.vsix
