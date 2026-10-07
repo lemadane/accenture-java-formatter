@@ -45,6 +45,16 @@ intellijPlatform {
 }
 
 tasks {
+    val copyPluginZipToRoot by registering(Copy::class) {
+        from(layout.buildDirectory.dir("distributions"))
+        include("accenture-java-formatter-intellij-${project.version}.zip")
+        into(layout.projectDirectory)
+    }
+
+    named("buildPlugin") {
+        finalizedBy(copyPluginZipToRoot)
+    }
+
     withType<JavaCompile> {
         sourceCompatibility = "17"
         targetCompatibility = "17"
