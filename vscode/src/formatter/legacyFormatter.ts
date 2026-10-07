@@ -1,7 +1,7 @@
 import { FormatterConfig } from './config';
 import { organizeJavaImports } from './organizeImports';
 
-export class JavaFormatter {
+export class LegacyJavaFormatter {
     private config: FormatterConfig;
 
     constructor(config: FormatterConfig) {
@@ -10,7 +10,7 @@ export class JavaFormatter {
 
     public formatDocument(sourceCode: string): string {
         let lines = sourceCode.split(/\r?\n/);
-        
+
         // 1. Organize imports if enabled
         if (this.config.organizeImportsOnFormat) {
             const importResult = organizeJavaImports(lines);
@@ -32,7 +32,7 @@ export class JavaFormatter {
     public formatRange(sourceCode: string, startLine: number, endLine: number): string {
         const rawLines = sourceCode.split(/\r?\n/);
         const targetRange = rawLines.slice(startLine, endLine + 1);
-        
+
         let baseIndentLevel = 0;
         for (let i = 0; i < Math.min(startLine, rawLines.length); i++) {
             const line = rawLines[i].trim();
@@ -46,7 +46,7 @@ export class JavaFormatter {
 
         const processedRange = this.preprocessFormattingRules(targetRange);
         const formattedRangeLines = this.formatLinesWithIndent(processedRange, baseIndentLevel);
-        
+
         const before = rawLines.slice(0, startLine);
         const after = rawLines.slice(endLine + 1);
         return [...before, ...formattedRangeLines, ...after].join('\n');
@@ -63,6 +63,9 @@ export class JavaFormatter {
 
         // Rule 1: Annotations on dedicated lines (runs after method params to ensure inline param annotations split)
         result = this.applyRule1Annotations(result);
+
+        // Readable Ternary Operators rule (split ternary at ? and : when exceeding line length)
+        result = this.applyRuleTernaryOperators(result);
 
         // Rule 7 & Rule 9: Assignment statement RHS split
         result = this.applyRule7AssignmentRhs(result);
@@ -81,10 +84,21 @@ export class JavaFormatter {
      */
     private applyRule1Annotations(lines: string[]): string[] {
         const output: string[] = [];
+        let inTextBlock = false;
 
         for (const line of lines) {
+            if (inTextBlock) {
+                output.push(line);
+                if (line.includes('"""')) inTextBlock = false;
+                continue;
+            }
+            if (line.includes('"""')) {
+                const count = (line.match(/"""/g) || []).length;
+                if (count % 2 !== 0) inTextBlock = true;
+            }
+
             const trimmed = line.trim();
-            if (!trimmed.includes('@') || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
+            if (!trimmed.includes('@') || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*') || (trimmed.startsWith('@') && trimmed.endsWith('('))) {
                 output.push(line);
                 continue;
             }
@@ -131,17 +145,29 @@ export class JavaFormatter {
      */
     private applyRule5Clauses(lines: string[]): string[] {
         const output: string[] = [];
+        let inTextBlock = false;
 
         for (const line of lines) {
+            if (inTextBlock) {
+                output.push(line);
+                if (line.includes('"""')) inTextBlock = false;
+                continue;
+            }
+            if (line.includes('"""')) {
+                const count = (line.match(/"""/g) || []).length;
+                if (count % 2 !== 0) inTextBlock = true;
+            }
+
             const trimmed = line.trim();
             if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
                 output.push(line);
                 continue;
             }
 
-            const hasExtends = /\bextends\b/.test(trimmed) && !trimmed.startsWith('extends');
-            const hasImplements = /\bimplements\b/.test(trimmed) && !trimmed.startsWith('implements');
-            const hasThrows = /\bthrows\b/.test(trimmed) && !trimmed.startsWith('throws');
+            const codeWithoutStrings = trimmed.replace(/"([^"\\]|\\.)*"/g, '""').replace(/'([^'\\]|\\.)*'/g, "''");
+            const hasExtends = /\bextends\b/.test(codeWithoutStrings) && !codeWithoutStrings.startsWith('extends');
+            const hasImplements = /\bimplements\b/.test(codeWithoutStrings) && !codeWithoutStrings.startsWith('implements');
+            const hasThrows = /\bthrows\b/.test(codeWithoutStrings) && !codeWithoutStrings.startsWith('throws');
 
             if (!hasExtends && !hasImplements && !hasThrows) {
                 output.push(line);
@@ -180,9 +206,21 @@ export class JavaFormatter {
     private applyRule4MethodParams(lines: string[]): string[] {
         const output: string[] = [];
         let i = 0;
+        let inTextBlock = false;
 
         while (i < lines.length) {
             const line = lines[i];
+            if (inTextBlock) {
+                output.push(line);
+                if (line.includes('"""')) inTextBlock = false;
+                i++;
+                continue;
+            }
+            if (line.includes('"""')) {
+                const count = (line.match(/"""/g) || []).length;
+                if (count % 2 !== 0) inTextBlock = true;
+            }
+
             const trimmed = line.trim();
 
             const isMethodOrConstructorStart =
@@ -232,7 +270,14 @@ export class JavaFormatter {
                             i = j;
                             continue;
                         } else {
-                            output.push(`${headerPrefix}(${processedParams[0]})${headerSuffix ? ' ' + headerSuffix : ''}`);
+                            const singleLineHeader = `${headerPrefix}(${processedParams[0]})${headerSuffix ? ' ' + headerSuffix : ''}`;
+                            const approxLineLength = singleLineHeader.length + 4;
+                            if (approxLineLength >= this.config.maxLineLength) {
+                                output.push(`${headerPrefix}(`);
+                                output.push(`${processedParams[0]})${headerSuffix ? ' ' + headerSuffix : ''}`);
+                            } else {
+                                output.push(singleLineHeader);
+                            }
                             i = j;
                             continue;
                         }
@@ -252,8 +297,19 @@ export class JavaFormatter {
      */
     private applyRule6MethodCalls(lines: string[]): string[] {
         const output: string[] = [];
+        let inTextBlock = false;
 
         for (const line of lines) {
+            if (inTextBlock) {
+                output.push(line);
+                if (line.includes('"""')) inTextBlock = false;
+                continue;
+            }
+            if (line.includes('"""')) {
+                const count = (line.match(/"""/g) || []).length;
+                if (count % 2 !== 0) inTextBlock = true;
+            }
+
             let trimmed = line.trim();
             let isRhs = false;
             if (trimmed.startsWith('ASSIGN_RHS:')) {
@@ -295,6 +351,11 @@ export class JavaFormatter {
                                 }
                             }
                             continue;
+                        } else if (args.length === 1 && line.length >= this.config.maxLineLength) {
+                            const prefix = isRhs ? `ASSIGN_RHS:${callPrefix}` : callPrefix;
+                            output.push(`${prefix}(`);
+                            output.push(`${args[0].trim()})${callSuffix}`);
+                            continue;
                         }
                     }
                 }
@@ -313,8 +374,19 @@ export class JavaFormatter {
      */
     private applyRule8ChainedCalls(lines: string[]): string[] {
         const output: string[] = [];
+        let inTextBlock = false;
 
         for (const line of lines) {
+            if (inTextBlock) {
+                output.push(line);
+                if (line.includes('"""')) inTextBlock = false;
+                continue;
+            }
+            if (line.includes('"""')) {
+                const count = (line.match(/"""/g) || []).length;
+                if (count % 2 !== 0) inTextBlock = true;
+            }
+
             let trimmed = line.trim();
             let isRhs = false;
             if (trimmed.startsWith('ASSIGN_RHS:')) {
@@ -322,7 +394,7 @@ export class JavaFormatter {
                 trimmed = trimmed.slice('ASSIGN_RHS:'.length).trim();
             }
 
-            if (trimmed.startsWith('import ') || trimmed.startsWith('package ') || trimmed.startsWith('//') || trimmed.startsWith('/*')) {
+            if (trimmed.startsWith('import ') || trimmed.startsWith('package ') || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('?') || trimmed.startsWith(':')) {
                 output.push(line);
                 continue;
             }
@@ -476,15 +548,26 @@ export class JavaFormatter {
 
     /**
      * Rule 7 & Rule 9: On assignment statements, right hand side of '=' can be on the next line.
-     * The RHS is only forced onto the next line if the line length reaches maxLineLength (80).
+    * The RHS is only forced onto the next line if the line length reaches maxLineLength (70).
      * If the RHS is already on the next line (user split it) or wrapped due to line length, it is indented 2x (4 spaces).
      */
     private applyRule7AssignmentRhs(lines: string[]): string[] {
         const output: string[] = [];
         let pendingAssignRhs = false;
+        let inTextBlock = false;
 
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
+            if (inTextBlock) {
+                output.push(line);
+                if (line.includes('"""')) inTextBlock = false;
+                continue;
+            }
+            if (line.includes('"""')) {
+                const count = (line.match(/"""/g) || []).length;
+                if (count % 2 !== 0) inTextBlock = true;
+            }
+
             let trimmed = line.trim();
 
             if (pendingAssignRhs) {
@@ -539,6 +622,7 @@ export class JavaFormatter {
     private findAssignmentOperatorIndex(line: string): number {
         let inString = false;
         let stringChar = '';
+        let parenDepth = 0;
 
         for (let i = 0; i < line.length - 2; i++) {
             const char = line[i];
@@ -553,7 +637,13 @@ export class JavaFormatter {
                 stringChar = char;
                 continue;
             }
-            if (line.slice(i, i + 3) === ' = ') {
+            if (char === '(') {
+                parenDepth++;
+            } else if (char === ')') {
+                parenDepth = Math.max(0, parenDepth - 1);
+            }
+
+            if (parenDepth === 0 && line.slice(i, i + 3) === ' = ') {
                 return i;
             }
         }
@@ -601,13 +691,29 @@ export class JavaFormatter {
 
         let inJavadoc = false;
         let inBlockComment = false;
+        let inTextBlock = false;
 
         for (let i = 0; i < lines.length; i++) {
+            if (inTextBlock) {
+                outputLines.push(lines[i]);
+                if (lines[i].includes('"""')) {
+                    inTextBlock = false;
+                }
+                continue;
+            }
+
             let line = lines[i].trim();
 
             if (line === '') {
                 outputLines.push('');
                 continue;
+            }
+
+            if (line.includes('"""')) {
+                const tripleQuoteCount = (line.match(/"""/g) || []).length;
+                if (tripleQuoteCount % 2 !== 0) {
+                    inTextBlock = true;
+                }
             }
 
             let isAssignRhs = false;
@@ -626,9 +732,12 @@ export class JavaFormatter {
             }
 
             const parenIndent = parenIndentStack.length > 0 ? parenIndentStack[parenIndentStack.length - 1] : 0;
-            const isContinuationLine = isAssignRhs || line.startsWith('=') || line.startsWith('.') || line.startsWith('extends') || line.startsWith('implements') || line.startsWith('throws');
+            const isContinuationLine = isAssignRhs || line.startsWith('=') || line.startsWith('.') || line.startsWith('?') || line.startsWith(':') || line.startsWith('extends') || line.startsWith('implements') || line.startsWith('throws');
             const extraIndent = isContinuationLine ? 2 : 0;
-            const lineIndentLevel = Math.max(0, blockIndent + parenIndent + extraIndent);
+            const isOperatorContinuationInParen = parenIndent > 0 && line.startsWith('+');
+            const lineIndentLevel = isOperatorContinuationInParen
+                ? Math.max(0, blockIndent + parenIndent + 2)
+                : Math.max(0, blockIndent + parenIndent + extraIndent);
 
             if (line.startsWith('/**')) {
                 inJavadoc = true;
@@ -780,11 +889,188 @@ export class JavaFormatter {
     }
 
     private normalizeOperatorSpaces(line: string): string {
-        return line
-            .replace(/([^!=><])==([^=])/g, '$1 == $2')
-            .replace(/([^!])!=([^=])/g, '$1 != $2')
-            .replace(/([^<])<=([^=])/g, '$1 <= $2')
-            .replace(/([^>])>=([^=])/g, '$1 >= $2');
+        const parts: string[] = [];
+        const regex = /("([^"\\]|\\.)*"|'([^'\\]|\\.)*')/g;
+        let lastIdx = 0;
+        let match: RegExpExecArray | null;
+
+        while ((match = regex.exec(line)) !== null) {
+            const codeBefore = line.slice(lastIdx, match.index);
+            parts.push(this.fixOperatorSpaces(codeBefore));
+            parts.push(match[0]);
+            lastIdx = match.index + match[0].length;
+        }
+
+        const codeRest = line.slice(lastIdx);
+        parts.push(this.fixOperatorSpaces(codeRest));
+
+        return parts.join('');
+    }
+
+    private applyRuleTernaryOperators(lines: string[]): string[] {
+        const output: string[] = [];
+        let i = 0;
+        let inTextBlock = false;
+
+        while (i < lines.length) {
+            const line = lines[i];
+            if (inTextBlock) {
+                output.push(line);
+                if (line.includes('"""')) inTextBlock = false;
+                i++;
+                continue;
+            }
+            if (line.includes('"""')) {
+                const count = (line.match(/"""/g) || []).length;
+                if (count % 2 !== 0) inTextBlock = true;
+            }
+
+            const trimmed = line.trim();
+
+            if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*') || trimmed.startsWith('import ') || trimmed.startsWith('package ')) {
+                output.push(line);
+                i++;
+                continue;
+            }
+
+            let statementText = trimmed;
+            let nextIndex = i + 1;
+
+            const hasTernaryIndicators = statementText.includes('?') || statementText.includes(':') || trimmed.endsWith('=') || trimmed.includes(' =');
+
+            if (hasTernaryIndicators && !statementText.endsWith(';') && !statementText.endsWith('{')) {
+                let accumulated = statementText;
+                let lookaheadIdx = i + 1;
+                let foundTernary = accumulated.includes('?') || accumulated.includes(':');
+
+                while (lookaheadIdx < lines.length) {
+                    const nextTrimmed = lines[lookaheadIdx].trim();
+                    if (nextTrimmed.startsWith('//') || nextTrimmed.startsWith('/*') || nextTrimmed.startsWith('@') || nextTrimmed.startsWith('class ') || nextTrimmed.startsWith('public ')) {
+                        break;
+                    }
+                    accumulated += ' ' + nextTrimmed;
+                    if (nextTrimmed.includes('?') || nextTrimmed.includes(':')) {
+                        foundTernary = true;
+                    }
+                    lookaheadIdx++;
+                    if (nextTrimmed.endsWith(';') || nextTrimmed.endsWith('{')) {
+                        break;
+                    }
+                }
+
+                if (foundTernary && this.hasTernaryOperator(accumulated)) {
+                    statementText = accumulated;
+                    nextIndex = lookaheadIdx;
+                }
+            }
+
+            if (this.hasTernaryOperator(statementText)) {
+                const ternaryParts = this.splitTernaryExpression(statementText);
+                if (ternaryParts) {
+                    const { condition, trueExpr, falseExpr } = ternaryParts;
+                    const normalizedCond = this.normalizeOperatorSpaces(condition).replace(/\s*\.\s*/g, '.');
+                    const normalizedTrue = trueExpr.trim().replace(/\s*\.\s*/g, '.');
+                    const normalizedFalse = falseExpr.trim().replace(/\s*\.\s*/g, '.');
+
+                    const fullSingleLine = `${normalizedCond} ? ${normalizedTrue} : ${normalizedFalse}`;
+                    if (fullSingleLine.length >= this.config.maxLineLength || statementText.includes('?') || statementText.includes(':')) {
+                        output.push(normalizedCond);
+                        output.push(`? ${normalizedTrue}`);
+                        output.push(`: ${normalizedFalse}`);
+                        i = nextIndex;
+                        continue;
+                    } else {
+                        output.push(fullSingleLine);
+                        i = nextIndex;
+                        continue;
+                    }
+                }
+            }
+
+            output.push(line);
+            i++;
+        }
+
+        return output;
+    }
+
+    private hasTernaryOperator(line: string): boolean {
+        let inString = false;
+        let stringChar = '';
+        let hasQuestion = false;
+        let hasColon = false;
+
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            if (inString) {
+                if (char === stringChar && line[i - 1] !== '\\') {
+                    inString = false;
+                }
+                continue;
+            }
+            if (char === '"' || char === "'") {
+                inString = true;
+                stringChar = char;
+                continue;
+            }
+            if (char === '?') {
+                hasQuestion = true;
+            } else if (char === ':' && hasQuestion) {
+                hasColon = true;
+            }
+        }
+        return hasQuestion && hasColon;
+    }
+
+    private splitTernaryExpression(line: string): { condition: string; trueExpr: string; falseExpr: string } | null {
+        let inString = false;
+        let stringChar = '';
+        let questionIdx = -1;
+        let colonIdx = -1;
+        let depth = 0;
+
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            if (inString) {
+                if (char === stringChar && line[i - 1] !== '\\') {
+                    inString = false;
+                }
+                continue;
+            }
+            if (char === '"' || char === "'") {
+                inString = true;
+                stringChar = char;
+                continue;
+            }
+            if (char === '(' || char === '<' || char === '[') {
+                depth++;
+            } else if (char === ')' || char === '>' || char === ']') {
+                depth = Math.max(0, depth - 1);
+            } else if (depth === 0) {
+                if (char === '?' && questionIdx === -1) {
+                    questionIdx = i;
+                } else if (char === ':' && questionIdx !== -1 && colonIdx === -1) {
+                    colonIdx = i;
+                }
+            }
+        }
+
+        if (questionIdx !== -1 && colonIdx !== -1 && colonIdx > questionIdx) {
+            const condition = line.slice(0, questionIdx).trim();
+            const trueExpr = line.slice(questionIdx + 1, colonIdx).trim();
+            const falseExpr = line.slice(colonIdx + 1).trim();
+            return { condition, trueExpr, falseExpr };
+        }
+
+        return null;
+    }
+
+    private fixOperatorSpaces(code: string): string {
+        return code
+            .replace(/\s*!=\s*/g, ' != ')
+            .replace(/(?<![!=><])\s*==\s*(?!=)/g, ' == ')
+            .replace(/(?<![<])\s*<=\s*(?!=)/g, ' <= ')
+            .replace(/(?<![>])\s*>=\s*(?!=)/g, ' >= ');
     }
 
     private normalizeCommaSpaces(line: string): string {
@@ -804,6 +1090,18 @@ export class JavaFormatter {
             const isEmpty = line.trim() === '';
 
             if (isEmpty) {
+                let nextNonEmpty = '';
+                for (let j = i + 1; j < lines.length; j++) {
+                    const t = lines[j].trim();
+                    if (t !== '') {
+                        nextNonEmpty = t;
+                        break;
+                    }
+                }
+                if (nextNonEmpty.startsWith('?') || nextNonEmpty.startsWith(':') || nextNonEmpty.startsWith('.')) {
+                    continue;
+                }
+
                 consecutiveEmpty++;
                 if (consecutiveEmpty <= 1) {
                     result.push(line);

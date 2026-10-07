@@ -147,7 +147,7 @@ describe('Accenture Java Formatter Test Suite', () => {
         const formatted = formatter.formatDocument(messyCode);
 
         assert.ok(formatted.includes('    final var product = this.productService.create(request);'));
-        assert.ok(formatted.includes('    final var location = URI.create("/api/products/" + product.id());'));
+        assert.ok(formatted.includes('    final var location =\n        URI.create("/api/products/" + product.id());'));
     });
 
     it('parseEclipseXmlConfig should extract indentation and line length settings', () => {

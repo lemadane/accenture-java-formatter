@@ -22,7 +22,7 @@ export interface FormatterConfig {
 export const ACCENTURE_DEFAULT_CONFIG: FormatterConfig = {
     tabSize: 2,
     insertSpaces: true,
-    maxLineLength: 80,
+    maxLineLength: 70,
     preset: 'Accenture Standard',
     formatComments: true,
     organizeImportsOnFormat: true,
@@ -30,7 +30,7 @@ export const ACCENTURE_DEFAULT_CONFIG: FormatterConfig = {
     spaceBeforeMethodParenthesis: false,
     blankLinesBeforeMethod: 1,
     alignAnnotations: true,
-    onSave: true,
+    onSave: false,
     formatOnChange: false
 };
 
@@ -38,7 +38,7 @@ export const PRESET_CONFIGS: Record<string, Partial<FormatterConfig>> = {
     'Accenture Standard': {
         tabSize: 2,
         insertSpaces: true,
-        maxLineLength: 80,
+        maxLineLength: 70,
         braceStyle: 'sameLine',
         spaceBeforeMethodParenthesis: false,
         blankLinesBeforeMethod: 1
@@ -46,7 +46,7 @@ export const PRESET_CONFIGS: Record<string, Partial<FormatterConfig>> = {
     'Google Java Style': {
         tabSize: 2,
         insertSpaces: true,
-        maxLineLength: 80,
+        maxLineLength: 70,
         braceStyle: 'sameLine',
         spaceBeforeMethodParenthesis: false,
         blankLinesBeforeMethod: 1
@@ -54,7 +54,7 @@ export const PRESET_CONFIGS: Record<string, Partial<FormatterConfig>> = {
     'Eclipse Default': {
         tabSize: 4,
         insertSpaces: false,
-        maxLineLength: 80,
+        maxLineLength: 70,
         braceStyle: 'sameLine',
         spaceBeforeMethodParenthesis: false,
         blankLinesBeforeMethod: 1
@@ -62,7 +62,7 @@ export const PRESET_CONFIGS: Record<string, Partial<FormatterConfig>> = {
     'Spring Framework Style': {
         tabSize: 4,
         insertSpaces: true,
-        maxLineLength: 80,
+        maxLineLength: 70,
         braceStyle: 'sameLine',
         spaceBeforeMethodParenthesis: false,
         blankLinesBeforeMethod: 1
@@ -85,7 +85,7 @@ export function getFormatterConfig(document?: vscode.TextDocument): FormatterCon
     const config: FormatterConfig = {
         tabSize: vscodeConfig ? vscodeConfig.get('tabSize', basePreset.tabSize ?? 2) : (basePreset.tabSize ?? 2),
         insertSpaces: vscodeConfig ? vscodeConfig.get('insertSpaces', basePreset.insertSpaces ?? true) : (basePreset.insertSpaces ?? true),
-        maxLineLength: vscodeConfig ? vscodeConfig.get('maxLineLength', basePreset.maxLineLength ?? 80) : (basePreset.maxLineLength ?? 80),
+        maxLineLength: vscodeConfig ? vscodeConfig.get('maxLineLength', basePreset.maxLineLength ?? 70) : (basePreset.maxLineLength ?? 70),
         preset: preset as FormatterConfig['preset'],
         formatComments: vscodeConfig ? vscodeConfig.get('comments.enabled', true) : true,
         organizeImportsOnFormat: vscodeConfig ? vscodeConfig.get('imports.organizeOnFormat', true) : true,
@@ -95,7 +95,7 @@ export function getFormatterConfig(document?: vscode.TextDocument): FormatterCon
         alignAnnotations: true,
         xmlSettingsUrl: vscodeConfig ? vscodeConfig.get('settings.url', '') : '',
         xmlProfileName: vscodeConfig ? vscodeConfig.get('settings.profile', '') : '',
-        onSave: vscodeConfig ? vscodeConfig.get('onSave', true) : true,
+        onSave: vscodeConfig ? vscodeConfig.get('onSave', false) : false,
         formatOnChange: vscodeConfig ? vscodeConfig.get('formatOnChange', false) : false
     };
 

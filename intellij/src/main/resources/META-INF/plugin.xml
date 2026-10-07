@@ -1,0 +1,33 @@
+<idea-plugin>
+    <id>com.accenture.java.formatter</id>
+    <name>Accenture Java Formatter</name>
+    <vendor email="support@accenture.com" url="https://accenture.com">LemuelAdane</vendor>
+
+    <description><![CDATA[
+    Enterprise-grade Java code formatting plugin for IntelliJ IDEA, implementing Accenture Java code style rules.
+    <br/>
+    <b>Features:</b>
+    <ul>
+      <li>Rule 1: Annotations on dedicated lines</li>
+      <li>Rule 4: Method & constructor parameter line wrapping (>1 params and long single param >= 70 cols)</li>
+      <li>Rule 5: extends, implements, throws clause line splitting</li>
+      <li>Rule 6: Method call argument multiline wrapping</li>
+      <li>Rule 7: Assignment RHS 2x continuation indentation</li>
+      <li>Rule 8: Object chaining (>= 2 dots)</li>
+      <li>Rule 9: Line length wrapping (70 columns)</li>
+      <li>Rule 10: Automatic format integration (Ctrl+Alt+L / Cmd+Option+L and format on save)</li>
+      <li>Ternary Operator Engine: Multiline statement lookahead joining & clean 3-line formatting</li>
+      <li>Import Organizer: Sorting and grouping Java imports</li>
+      <li>100% Idempotent Formatting</li>
+    </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.java</depends>
+
+    <idea-version since-build="233"/>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <preFormatProcessor implementation="com.accenture.formatter.AccenturePreFormatProcessor"/>
+    </extensions>
+</idea-plugin>
